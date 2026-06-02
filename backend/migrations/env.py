@@ -15,8 +15,10 @@ from viberoi_shared.db import Base
 
 # Side-effect: registers ORM models with Base.metadata.
 # Add new model modules here as the schema grows.
+import viberoi_shared.integrations.models  # noqa: F401, E402
 import viberoi_shared.orgs.models  # noqa: F401, E402
 import viberoi_shared.sessions.models  # noqa: F401, E402
+import viberoi_shared.tickets.models  # noqa: F401, E402
 
 config = context.config
 
