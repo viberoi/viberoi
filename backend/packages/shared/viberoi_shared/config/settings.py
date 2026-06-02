@@ -45,9 +45,9 @@ class SharedSettings(BaseSettings):
     # `database_admin_url`: BYPASSRLS user used ONLY by Alembic migrations and
     # `viberoi_shared.db.superuser_session()`. Sync driver (`+psycopg`) because
     # Alembic doesn't run async.
-    database_url: str = "postgresql+asyncpg://viberoi:viberoi@localhost:5432/viberoi"
+    database_url: str = "postgresql+asyncpg://viberoi:viberoi@localhost:5433/viberoi"
     database_admin_url: str = (
-        "postgresql+psycopg://viberoi_admin:viberoi_admin@localhost:5432/viberoi"
+        "postgresql+psycopg://viberoi_admin:viberoi_admin@localhost:5433/viberoi"
     )
     database_pool_size: int = 5
     database_max_overflow: int = 10

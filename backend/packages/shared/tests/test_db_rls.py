@@ -140,12 +140,15 @@ async def two_orgs_with_data() -> tuple[Org, Org, Developer, Developer]:
 
     yield (org_a, org_b, dev_a, dev_b)
 
-    # Cleanup — cascade from orgs handles teams/developers/tokens/sessions
+    # Cleanup. sessions.org_id is ON DELETE RESTRICT (intentional — guards
+    # accidental session loss). Delete sessions first, then orgs (which
+    # cascades to teams/developers/org_tokens).
     async with superuser_session() as db:
+        ids = {"a": str(org_a_id), "b": str(org_b_id)}
         await db.execute(
-            text("DELETE FROM orgs WHERE id IN (:a, :b)"),
-            {"a": str(org_a_id), "b": str(org_b_id)},
+            text("DELETE FROM sessions WHERE org_id IN (:a, :b)"), ids
         )
+        await db.execute(text("DELETE FROM orgs WHERE id IN (:a, :b)"), ids)
 
 
 async def test_org_scoped_session_only_sees_own_sessions(

@@ -4,17 +4,23 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: viberoi-postgres
+    # Host port 5433 (not 5432) to coexist with any host-installed Postgres.
+    # Container-internal port stays 5432 — used by other compose services.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
-      POSTGRES_USER: viberoi
-      POSTGRES_PASSWORD: viberoi
+      # `postgres` superuser is the bootstrap; init.sql creates the
+      # real app roles (viberoi, viberoi_admin) as non-superuser.
+      # Postgres refuses to let the bootstrap user demote itself, so
+      # we never make `viberoi` the bootstrap.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: viberoi
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U viberoi -d viberoi"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d viberoi"]
       interval: 5s
       timeout: 5s
       retries: 5

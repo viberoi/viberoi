@@ -23,8 +23,10 @@ from viberoi_shared.types.session import Session
 # Matches:
 #   JIRA-142, ENG-89, ABC-123  (uppercase prefix + digits)
 #   #142                       (GitHub issue style)
-# Word boundaries prevent partial matches inside other identifiers.
-_BRANCH_TICKET_RE = re.compile(r"\b([A-Z][A-Z0-9]+-\d+|#\d+)\b")
+# No word boundaries — `\b` doesn't work for `#` since it isn't a word
+# character. Uppercase-required start keeps false positives away from
+# lowercase branch identifiers like "claude/xenodochial-..." or "wip-auth".
+_BRANCH_TICKET_RE = re.compile(r"([A-Z][A-Z0-9]+-\d+|#\d+)")
 
 # Signal weights from spec § Q5.
 SIGNAL_BRANCH_WEIGHT = 0.35

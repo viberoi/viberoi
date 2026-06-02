@@ -126,7 +126,11 @@ async def org_and_dev() -> tuple[Org, Developer]:
 
     yield (org, dev)
 
+    # sessions.org_id is ON DELETE RESTRICT — delete sessions first, then org.
     async with superuser_session() as db:
+        await db.execute(
+            text("DELETE FROM sessions WHERE org_id = :id"), {"id": str(org_id)}
+        )
         await db.execute(text("DELETE FROM orgs WHERE id = :id"), {"id": str(org_id)})
     await reset_org_counters(org_id)
 

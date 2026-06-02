@@ -32,8 +32,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _enable_rls(table: str) -> None:
-    """Turn on RLS and add the standard org_isolation policy."""
+    """Turn on RLS and add the standard org_isolation policy.
+
+    FORCE ROW LEVEL SECURITY means even the table OWNER is subject to the
+    policy — without it, the role that created the table (viberoi_admin
+    via Alembic) would bypass RLS automatically. Belt and suspenders.
+    """
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+    op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
     op.execute(
         f"""
         CREATE POLICY org_isolation ON {table}
@@ -80,7 +86,10 @@ def upgrade() -> None:
     op.create_index("ix_orgs_domain", "orgs", ["domain"])
 
     # RLS on orgs: a request scoped to an org can only see its own row.
+    # FORCE applies the policy to the table owner too (otherwise the role
+    # that created the table — viberoi_admin via Alembic — would bypass).
     op.execute("ALTER TABLE orgs ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE orgs FORCE ROW LEVEL SECURITY")
     op.execute(
         """
         CREATE POLICY org_isolation ON orgs
