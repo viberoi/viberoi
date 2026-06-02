@@ -11,6 +11,7 @@ the external API; the webhook Lambda fetches and decrypts the
 webhook signing secret per inbound webhook to verify HMAC.
 """
 
+from viberoi_shared.integrations import oauth_state
 from viberoi_shared.integrations.models import IntegrationOAuthToken
 from viberoi_shared.integrations.repository import (
     get_token_for_org,
@@ -21,6 +22,7 @@ from viberoi_shared.integrations.repository import (
 __all__ = [
     "IntegrationOAuthToken",
     "get_token_for_org",
+    "oauth_state",
     "revoke_token",
     "store_token",
 ]
