@@ -29,7 +29,12 @@ viberoi-shared = { workspace = true }
 asyncio_mode = "auto"
 testpaths = ["backend/packages", "backend/services", "backend/lambdas"]
 python_files = "test_*.py"
-addopts = "-ra --strict-markers --strict-config"
+# Default excludes integration tests (they need LocalStack).
+# Run them explicitly with: uv run pytest -m integration
+addopts = "-ra --strict-markers --strict-config -m 'not integration'"
+markers = [
+    "integration: requires LocalStack via ./scripts/dev-up (auto-skipped if down)",
+]
 
 [tool.mypy]
 python_version = "3.12"

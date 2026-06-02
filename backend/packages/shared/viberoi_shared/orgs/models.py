@@ -69,6 +69,14 @@ class Team(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    lead_developer_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey(
+            "developers.id",
+            ondelete="SET NULL",
+            name="fk_teams_lead_developer",
+        ),
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -81,6 +89,9 @@ class Developer(Base):
     __tablename__ = "developers"
     __table_args__ = (
         UniqueConstraint("org_id", "email_hash", name="uq_developers_org_email"),
+        UniqueConstraint(
+            "org_id", "machine_id_hash", name="uq_developers_org_machine"
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -139,6 +150,7 @@ class OrgToken(Base):
         nullable=False,
     )
     hashed: Mapped[str] = mapped_column(Text, nullable=False)  # Argon2id self-describing
+    device_label: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
