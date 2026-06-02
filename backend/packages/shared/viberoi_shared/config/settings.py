@@ -41,7 +41,14 @@ class SharedSettings(BaseSettings):
     aws_endpoint_url: str | None = None  # set to http://localhost:4566 for LocalStack
 
     # Database
+    # `database_url`: regular RLS-respecting user used by services at runtime.
+    # `database_admin_url`: BYPASSRLS user used ONLY by Alembic migrations and
+    # `viberoi_shared.db.superuser_session()`. Sync driver (`+psycopg`) because
+    # Alembic doesn't run async.
     database_url: str = "postgresql+asyncpg://viberoi:viberoi@localhost:5432/viberoi"
+    database_admin_url: str = (
+        "postgresql+psycopg://viberoi_admin:viberoi_admin@localhost:5432/viberoi"
+    )
     database_pool_size: int = 5
     database_max_overflow: int = 10
     database_pool_timeout_s: int = 30

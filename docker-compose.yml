@@ -1,0 +1,55 @@
+name: viberoi-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: viberoi-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: viberoi
+      POSTGRES_PASSWORD: viberoi
+      POSTGRES_DB: viberoi
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viberoi -d viberoi"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: viberoi-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: viberoi-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs,kms,secretsmanager,iam
+      DEBUG: 0
+      DEFAULT_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      PERSISTENCE: 1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  localstack-data:

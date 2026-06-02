@@ -1,0 +1,130 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint + format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+
+      - name: Setup Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Sync workspace
+        run: uv sync
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+
+      - name: Setup Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Sync workspace
+        run: uv sync
+
+      - name: Mypy (strict on shared)
+        run: uv run mypy backend/packages/shared
+
+      - name: Mypy (services)
+        run: uv run mypy backend/services
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: viberoi
+          POSTGRES_PASSWORD: viberoi
+          POSTGRES_DB: viberoi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U viberoi -d viberoi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      VIBEROI_ENV: test
+      VIBEROI_DATABASE_URL: postgresql+asyncpg://viberoi:viberoi@localhost:5432/viberoi
+      VIBEROI_DATABASE_ADMIN_URL: postgresql+psycopg://viberoi_admin:viberoi_admin@localhost:5432/viberoi
+      VIBEROI_REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+
+      - name: Setup Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Sync workspace
+        run: uv sync
+
+      - name: Install postgres client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Bootstrap Postgres (extensions + admin role)
+        env:
+          PGPASSWORD: viberoi
+        run: psql -h localhost -U viberoi -d viberoi -f scripts/postgres-init.sql
+
+      - name: Apply migrations
+        run: uv run alembic -c backend/migrations/alembic.ini upgrade head
+
+      - name: Run tests
+        run: uv run pytest -v --tb=short
+
+      - name: Verify migration is reversible (downgrade then upgrade)
+        run: |
+          uv run alembic -c backend/migrations/alembic.ini downgrade base
+          uv run alembic -c backend/migrations/alembic.ini upgrade head
