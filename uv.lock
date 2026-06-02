@@ -7,6 +7,7 @@ members = [
     "viberoi",
     "viberoi-ingest",
     "viberoi-shared",
+    "viberoi-webhook-receiver",
     "viberoi-worker",
 ]
 
@@ -1230,6 +1231,17 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.30" },
     { name = "structlog", specifier = ">=24.1.0" },
 ]
+
+[[package]]
+name = "viberoi-webhook-receiver"
+version = "0.1.0"
+source = { editable = "backend/lambdas/webhook_receiver" }
+dependencies = [
+    { name = "viberoi-shared" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "viberoi-shared", editable = "backend/packages/shared" }]
 
 [[package]]
 name = "viberoi-worker"

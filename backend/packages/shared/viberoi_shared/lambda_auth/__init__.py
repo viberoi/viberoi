@@ -6,3 +6,7 @@ Sources: `webhook:<provider>`, `cognito:presignup`, `cognito:postconfirmation`,
 
 See `.claude/rules/security.md` § "Lambda auth — explicit per type".
 """
+
+from viberoi_shared.lambda_auth.verify import verify
+
+__all__ = ["verify"]
