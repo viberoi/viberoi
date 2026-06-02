@@ -1,22 +1,21 @@
-"""Session ingest endpoints (Slice 1 stub).
+"""Session ingest endpoints — Slice 3 real implementation.
 
-Final shape (Slice 3):
-  1. Verify HMAC signature on raw body using `org_token` Argon2id hash
-  2. Gunzip payload
-  3. Validate against `viberoi_shared.types.Session`
-  4. Write raw bytes to S3 `viberoi-org-data/orgs/{org_id}/sessions/{date}/{session}.json.gz`
-  5. Return 202 immediately (S3 event → SQS `session_ingest` → Worker)
-
-Slice 1 validates the Pydantic shape and returns 202 — proves the
-wiring + OpenAPI schema work end-to-end. No storage, no auth yet.
+Flow:
+  1. Bearer auth (via `authenticate` dependency) → AuthContext.
+  2. Validate body's `org_id` and `developer_id` match the auth context
+     (prevent cross-tenant push using stolen creds for a different dev).
+  3. Gzip + PUT to S3 raw landing (via `store.land_session`).
+  4. Return 202. The S3 event → SQS bridge fans out to the Worker.
 """
 
 from fastapi import APIRouter, status
 
-from ingest.schema.requests import IngestRequest
+from ingest.app.auth import AuthRequired
+from ingest.app.store import land_session
 from ingest.schema.responses import IngestResponse
-from viberoi_shared.errors import ValidationFailed
+from viberoi_shared.errors import Forbidden, ValidationFailed
 from viberoi_shared.logging import get_logger
+from viberoi_shared.types import Session
 
 logger = get_logger(__name__)
 
@@ -25,24 +24,25 @@ router = APIRouter()
 _BATCH_LIMIT = 100
 
 
+def _assert_session_matches_auth(session: Session, ctx: AuthRequired) -> None:
+    """Reject payloads whose ids don't match the authenticated context."""
+    if session.org_id != str(ctx.org_id):
+        raise Forbidden("Session org_id does not match authenticated org.")
+    if session.developer_id != str(ctx.developer_id):
+        raise Forbidden("Session developer_id does not match authenticated developer.")
+
+
 @router.post(
     "/session",
     response_model=IngestResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def ingest_session(payload: IngestRequest) -> IngestResponse:
+async def ingest_session(session: Session, ctx: AuthRequired) -> IngestResponse:
     """Accept a single session for async processing."""
-    logger.info(
-        "ingest_session_received",
-        session_id=payload.session.session_id,
-        tool=payload.session.tool.name.value,
-        org_id=payload.session.org_id,
-    )
-    return IngestResponse(
-        accepted=1,
-        rejected=0,
-        message="accepted (Slice 1 stub — S3 write lands in Slice 3 final)",
-    )
+    _assert_session_matches_auth(session, ctx)
+    key = await land_session(session)
+    logger.info("ingest_session_accepted", session_id=session.session_id, s3_key=key)
+    return IngestResponse(accepted=1, rejected=0, message="landed in raw bucket")
 
 
 @router.post(
@@ -50,16 +50,29 @@ async def ingest_session(payload: IngestRequest) -> IngestResponse:
     response_model=IngestResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def ingest_sessions_batch(payload: list[IngestRequest]) -> IngestResponse:
-    """Accept a batch of sessions (up to 100)."""
-    if len(payload) > _BATCH_LIMIT:
+async def ingest_sessions_batch(
+    sessions: list[Session], ctx: AuthRequired
+) -> IngestResponse:
+    """Accept a batch of sessions (up to 100).
+
+    All sessions in the batch must belong to the same authenticated
+    `(org, developer)` — agents only push their own.
+    """
+    if len(sessions) > _BATCH_LIMIT:
         raise ValidationFailed(
-            f"Batch too large: {len(payload)} > {_BATCH_LIMIT}",
-            details={"batch_size": len(payload), "limit": _BATCH_LIMIT},
+            f"Batch too large: {len(sessions)} > {_BATCH_LIMIT}",
+            details={"batch_size": len(sessions), "limit": _BATCH_LIMIT},
         )
-    logger.info("ingest_batch_received", count=len(payload))
+    for session in sessions:
+        _assert_session_matches_auth(session, ctx)
+
+    keys: list[str] = []
+    for session in sessions:
+        keys.append(await land_session(session))
+
+    logger.info("ingest_batch_accepted", count=len(sessions))
     return IngestResponse(
-        accepted=len(payload),
+        accepted=len(sessions),
         rejected=0,
-        message="accepted (Slice 1 stub)",
+        message=f"landed {len(keys)} sessions in raw bucket",
     )

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from ingest.api import health, sessions
 from viberoi_shared.errors.handlers import register_handlers
-from viberoi_shared.logging import configure_logging, get_logger
+from viberoi_shared.logging import RequestIdMiddleware, configure_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
+    app.add_middleware(RequestIdMiddleware)
     register_handlers(app)
     app.include_router(health.router)
     app.include_router(sessions.router, prefix="/ingest", tags=["ingest"])

@@ -31,6 +31,7 @@ for bucket in viberoi-org-data viberoi-kiro-sync viberoi-backups; do
 done
 
 # ── SQS queues — each main queue gets a DLQ with maxReceiveCount=3 ──────────
+declare -A QUEUE_ARNS
 for queue in session_ingest webhook_events backfill_jobs notification_jobs; do
     awslocal sqs create-queue --queue-name "${queue}_dlq" >/dev/null
     DLQ_URL=$(awslocal sqs get-queue-url --queue-name "${queue}_dlq" --query QueueUrl --output text)
@@ -42,8 +43,38 @@ for queue in session_ingest webhook_events backfill_jobs notification_jobs; do
         --queue-name "$queue" \
         --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\",\"VisibilityTimeout\":\"30\"}" \
         >/dev/null
+    QUEUE_URL=$(awslocal sqs get-queue-url --queue-name "$queue" --query QueueUrl --output text)
+    QUEUE_ARN=$(awslocal sqs get-queue-attributes \
+        --queue-url "$QUEUE_URL" \
+        --attribute-names QueueArn \
+        --query 'Attributes.QueueArn' --output text)
+    QUEUE_ARNS[$queue]=$QUEUE_ARN
     echo "[viberoi] Created SQS queue: $queue (+ ${queue}_dlq)"
 done
+
+# ── S3 → SQS event notification ─────────────────────────────────────────────
+# When a session lands in viberoi-org-data, fire an event to session_ingest.
+# Worker long-polls session_ingest and pulls the S3 object on each event.
+# Filter: only orgs/*.json.gz (the canonical raw-landing key shape).
+awslocal s3api put-bucket-notification-configuration \
+    --bucket viberoi-org-data \
+    --notification-configuration "{
+        \"QueueConfigurations\": [
+            {
+                \"QueueArn\": \"${QUEUE_ARNS[session_ingest]}\",
+                \"Events\": [\"s3:ObjectCreated:*\"],
+                \"Filter\": {
+                    \"Key\": {
+                        \"FilterRules\": [
+                            {\"Name\": \"prefix\", \"Value\": \"orgs/\"},
+                            {\"Name\": \"suffix\", \"Value\": \".json.gz\"}
+                        ]
+                    }
+                }
+            }
+        ]
+    }"
+echo "[viberoi] Wired S3 event notification: viberoi-org-data → session_ingest"
 
 # ── Secrets Manager — dev pepper for HMAC lookups ───────────────────────────
 if ! awslocal secretsmanager describe-secret --secret-id viberoi/dev/lookup_pepper >/dev/null 2>&1; then

@@ -4,9 +4,13 @@ Services obtain DB sessions EXCLUSIVELY via `org_scoped_session(org_id)`.
 The helper sets `app.current_org_id` inside the transaction, so Postgres
 RLS enforces tenant isolation even if app code forgets to filter.
 
+`superuser_session()` connects as the BYPASSRLS `viberoi_admin` role —
+for cron jobs, cross-org admin tasks, and migrations. Request handlers
+must NEVER use it.
+
 Usage:
     async with org_scoped_session(org_id) as db:
-        await sessions.create(db, payload)
+        await sessions.upsert(db, payload, ...)
 """
 
 from collections.abc import AsyncIterator
@@ -16,7 +20,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from viberoi_shared.db.engine import get_session_factory
+from viberoi_shared.db.engine import get_admin_session_factory, get_session_factory
 from viberoi_shared.errors.types import VibeRoiError
 
 
@@ -62,16 +66,18 @@ async def org_scoped_session(org_id: str | UUID) -> AsyncIterator[AsyncSession]:
 
 @asynccontextmanager
 async def superuser_session() -> AsyncIterator[AsyncSession]:
-    """Yield an AsyncSession without org context.
+    """Yield an AsyncSession as the BYPASSRLS admin role.
 
-    Use ONLY for cross-org admin tasks (migrations, cross-org KPI
-    crons, scheduled cleanups). Never expose to request handlers.
+    Use ONLY for:
+      - Cross-org admin tasks (KPI snapshot crons, cleanups)
+      - Test setup that needs to create rows across multiple orgs
+      - The auth flow's developer/token lookup (where we don't yet
+        know which org owns the request)
 
-    The migration grants this role `BYPASSRLS`. RLS policies should
-    deny by default when `app.current_org_id` is unset, so this
-    session is the only legitimate path to cross-tenant reads.
+    NEVER expose to request handlers — RLS is the safety net against
+    tenant-isolation bugs and we lose it here.
     """
-    factory = get_session_factory()
+    factory = get_admin_session_factory()
     async with factory() as session:
         async with session.begin():
             yield session

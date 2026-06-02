@@ -13,8 +13,11 @@ from viberoi_shared.logging.config import (
     configure_logging,
     get_logger,
 )
+from viberoi_shared.logging.middleware import HEADER_NAME, RequestIdMiddleware
 
 __all__ = [
+    "HEADER_NAME",
+    "RequestIdMiddleware",
     "bind_request_context",
     "clear_request_context",
     "configure_logging",
