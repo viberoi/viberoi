@@ -1,0 +1,71 @@
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "backend/migrations/versions",
+    "frontend",
+    "agent",
+    "infra",
+]
+
+[lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "S",     # bandit (security)
+    "N",     # pep8-naming
+    "ANN",   # flake8-annotations
+    "ASYNC", # flake8-async
+    "PL",    # pylint
+    "RUF",   # ruff-specific
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports
+    "PT",    # pytest-style
+    "RET",   # flake8-return
+    "TRY",   # tryceratops (better exception handling)
+    "T20",   # no print
+    "FBT",   # boolean trap
+    "DTZ",   # naive datetimes
+    "PIE",   # misc
+    "ARG",   # unused arguments
+]
+ignore = [
+    "ANN101", # missing-type-self (deprecated)
+    "ANN102", # missing-type-cls (deprecated)
+    "TRY003", # long messages in exceptions
+    "PLR0913", # we set max-args via pylint section
+]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["ANN", "S101", "PLR2004", "ARG"]
+"**/conftest.py" = ["ANN", "ARG"]
+"**/__init__.py" = ["F401"]  # re-export pattern
+
+[lint.pylint]
+max-args = 5
+max-statements = 50
+max-returns = 6
+max-branches = 12
+max-positional-args = 5
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.flake8-tidy-imports.banned-api]
+"boto3".msg = "Use viberoi_shared.aws helpers instead — services don't import boto3 directly."
+"bcrypt".msg = "Use viberoi_shared.crypto.hash_secret() (Argon2id) — bcrypt is replaced."
+"hashlib.pbkdf2_hmac".msg = "Use viberoi_shared.crypto for KDF needs."
+
+[lint.isort]
+known-first-party = ["viberoi_shared"]
+combine-as-imports = true
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
