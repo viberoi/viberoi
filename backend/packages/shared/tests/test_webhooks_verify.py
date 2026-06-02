@@ -246,7 +246,16 @@ def test_extract_delivery_id_gitlab_legacy() -> None:
     assert extract_delivery_id("gitlab", {"X-Gitlab-Token": "secret"}) is None
 
 
-def test_extract_delivery_id_linear_none() -> None:
+def test_extract_delivery_id_linear() -> None:
+    assert (
+        extract_delivery_id(
+            "linear", {"Linear-Delivery": "01HX9PVA-deliv-uuid"}
+        )
+        == "01HX9PVA-deliv-uuid"
+    )
+
+
+def test_extract_delivery_id_linear_missing() -> None:
     assert extract_delivery_id("linear", {"Linear-Signature": "abc"}) is None
 
 

@@ -188,6 +188,7 @@ def extract_delivery_id(provider: str, headers: Mapping[str, str]) -> str | None
         # Standard Webhooks → webhook-id. Legacy → no delivery ID.
         return _get_header_case_insensitive(headers, "webhook-id") or None
     if p == LINEAR:
-        # Linear doesn't document a delivery ID header (verified 2026-06-03).
-        return None
+        # Linear sends `Linear-Delivery` (UUID) + `Linear-Event` (entity type).
+        # Confirmed in a second doc-review pass 2026-06-03.
+        return _get_header_case_insensitive(headers, "Linear-Delivery") or None
     return None
