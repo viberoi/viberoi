@@ -78,6 +78,12 @@ class ExternalServiceError(VibeRoiError):
     safe_message = "An external service is unavailable."
 
 
+class Gone(VibeRoiError):
+    code = "gone"
+    status_code = HTTPStatus.GONE
+    safe_message = "Resource is no longer available — please reconnect."
+
+
 class ConfigError(VibeRoiError):
     code = "config_error"
     status_code = HTTPStatus.INTERNAL_SERVER_ERROR

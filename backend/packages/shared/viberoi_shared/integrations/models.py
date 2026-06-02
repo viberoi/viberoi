@@ -8,10 +8,11 @@ fields use the `(ciphertext, key_version, iv)` shape; see
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, SmallInteger, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import BYTEA, TIMESTAMP
+from sqlalchemy.dialects.postgresql import BYTEA, JSONB, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -65,3 +66,9 @@ class IntegrationOAuthToken(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
     revoked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+    # Post-OAuth metadata (added in migration 0005)
+    discovery_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    webhook_registration_status: Mapped[str | None] = mapped_column(Text)
+    last_sync_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    webhook_ids: Mapped[list[str] | None] = mapped_column(JSONB)

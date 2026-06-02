@@ -23,6 +23,8 @@ class IntegrationSummary(BaseModel):
     expires_at: datetime | None
     scope: str | None
     created_at: datetime
+    webhook_registration_status: str | None
+    last_sync_at: datetime | None
     revoked: bool
 
 

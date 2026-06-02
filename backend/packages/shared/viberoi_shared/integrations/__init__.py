@@ -15,14 +15,20 @@ from viberoi_shared.integrations import oauth_state
 from viberoi_shared.integrations.models import IntegrationOAuthToken
 from viberoi_shared.integrations.repository import (
     get_token_for_org,
+    list_for_org,
+    mark_synced,
     revoke_token,
     store_token,
+    update_webhook_metadata,
 )
 
 __all__ = [
     "IntegrationOAuthToken",
     "get_token_for_org",
+    "list_for_org",
+    "mark_synced",
     "oauth_state",
     "revoke_token",
     "store_token",
+    "update_webhook_metadata",
 ]

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from integration.api import health
+from integration.api import health, integrations, oauth
 from viberoi_shared.errors.handlers import register_handlers
 from viberoi_shared.logging import RequestIdMiddleware, configure_logging, get_logger
 
@@ -31,7 +31,10 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     register_handlers(app)
     app.include_router(health.router)
-    # /integrations/* routers land in C4 (orchestrator + OAuth routes).
+    app.include_router(oauth.router, prefix="/integrations", tags=["oauth"])
+    app.include_router(
+        integrations.router, prefix="/integrations", tags=["integrations"]
+    )
     return app
 
 
