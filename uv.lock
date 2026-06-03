@@ -10,6 +10,7 @@ members = [
     "viberoi-cognito-presignup",
     "viberoi-ingest",
     "viberoi-integration",
+    "viberoi-notification",
     "viberoi-shared",
     "viberoi-webhook-receiver",
     "viberoi-worker",
@@ -1250,6 +1251,21 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.111.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
+    { name = "viberoi-shared", editable = "backend/packages/shared" },
+]
+
+[[package]]
+name = "viberoi-notification"
+version = "0.1.0"
+source = { editable = "backend/services/notification" }
+dependencies = [
+    { name = "httpx" },
+    { name = "viberoi-shared" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "viberoi-shared", editable = "backend/packages/shared" },
 ]
 
