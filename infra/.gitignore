@@ -1,0 +1,18 @@
+# Local Terraform state — should never be committed once the S3 backend
+# is in place. The bootstrap module uses local state intentionally; that
+# `terraform.tfstate` file should be archived (not committed) after the
+# state bucket exists.
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+
+# Per-developer overrides. CI uses TF_VAR_* env vars instead.
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Plan output captures — keep these out of git.
+*.tfplan
+crash.log
+crash.*.log
