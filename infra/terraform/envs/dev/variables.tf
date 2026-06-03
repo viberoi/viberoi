@@ -37,7 +37,19 @@ variable "single_nat" {
 variable "domain" {
   type        = string
   default     = ""
-  description = "Public domain for ALB + CloudFront. Empty until wired in 6E."
+  description = "Apex domain — e.g. viberoi.io. Empty disables 6E (ACM/ALB-cert/CloudFront-custom-domain/Cognito-custom-domain stay blank). When set, terraform creates an ACM cert covering app.<domain>, api.<domain>, auth.<domain>, webhooks.<domain> — you then add the validation CNAMEs at Hostinger."
+}
+
+variable "enable_cognito_custom_domain" {
+  type        = bool
+  default     = false
+  description = "Phase 3 toggle — flip to true ONLY after the ACM cert is ISSUED (cognito custom domains refuse pending certs). See envs/dev/README."
+}
+
+variable "enable_cloudfront_custom_domain" {
+  type        = bool
+  default     = false
+  description = "Phase 3 toggle — same rule as cognito. CloudFront refuses an unvalidated cert at create time."
 }
 
 # ── Cognito federated IdPs (optional) ──────────────────────────────────────

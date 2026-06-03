@@ -375,7 +375,14 @@ module "ecs_ingest" {
   container_port     = 8001
   env_vars           = local.common_runtime_env
   secrets            = local.common_runtime_secrets
-  tags               = local.common_tags
+
+  # ALB attachment — only when the ALB exists (domain set).
+  load_balancer = var.domain != "" ? {
+    target_group_arn = module.alb[0].target_group_arns["ingest"]
+    container_port   = 8001
+  } : null
+
+  tags = local.common_tags
 }
 
 module "ecs_worker" {
@@ -413,7 +420,13 @@ module "ecs_integration" {
   container_port     = 8002
   env_vars           = local.common_runtime_env
   secrets            = local.common_runtime_secrets
-  tags               = local.common_tags
+
+  load_balancer = var.domain != "" ? {
+    target_group_arn = module.alb[0].target_group_arns["integration"]
+    container_port   = 8002
+  } : null
+
+  tags = local.common_tags
 }
 
 module "ecs_api" {
@@ -432,7 +445,13 @@ module "ecs_api" {
   container_port     = 8003
   env_vars           = local.common_runtime_env
   secrets            = local.common_runtime_secrets
-  tags               = local.common_tags
+
+  load_balancer = var.domain != "" ? {
+    target_group_arn = module.alb[0].target_group_arns["api"]
+    container_port   = 8003
+  } : null
+
+  tags = local.common_tags
 }
 
 module "ecs_notification" {
@@ -585,6 +604,79 @@ module "api_gateway_webhook" {
   lambda_function_name = module.lambda_webhook_receiver.function_name
   lambda_invoke_arn    = module.lambda_webhook_receiver.invoke_arn
   tags                 = local.common_tags
+}
+
+# ── ACM cert (skipped when domain is empty) ────────────────────────────────
+# Covers all the subdomains the platform serves. After apply:
+#   terraform output -json acm_validation_records
+# Paste the CNAMEs into Hostinger; wait ~30 min for ACM to validate.
+module "acm" {
+  source = "../../modules/acm_cert"
+  count  = var.domain != "" ? 1 : 0
+
+  project = var.project
+  env     = var.env
+  domain  = var.domain
+  subject_alternative_names = [
+    "app.${var.domain}",
+    "api.${var.domain}",
+    "auth.${var.domain}",
+    "webhooks.${var.domain}",
+  ]
+  tags = local.common_tags
+}
+
+# ── ALB ────────────────────────────────────────────────────────────────────
+# Created regardless of `domain` — the ALB DNS name is always reachable;
+# the HTTPS listener attaches the cert only when one exists.
+#
+# When `domain == ""`, we still create the ALB but skip HTTPS (HTTP only
+# isn't acceptable for prod; for dev you can hit the ALB DNS directly
+# over the HTTP listener which redirects to HTTPS — and HTTPS will fail
+# without a cert. So in practice domain must be set before the ALB is
+# useful. Apply the ACM module first.)
+module "alb" {
+  source = "../../modules/alb"
+  count  = var.domain != "" ? 1 : 0
+
+  project            = var.project
+  env                = var.env
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = module.vpc.public_subnet_ids
+  security_group_ids = [module.security_groups.alb_id]
+  certificate_arn    = module.acm[0].certificate_arn
+
+  tags = local.common_tags
+}
+
+# ── CloudFront for frontend ────────────────────────────────────────────────
+# Defaults to NO custom domain — serves on `<id>.cloudfront.net`. Once
+# ACM cert is ISSUED, flip `enable_cloudfront_custom_domain = true`
+# and re-apply to attach `app.<domain>`.
+module "cloudfront" {
+  source = "../../modules/cloudfront_frontend"
+
+  project                              = var.project
+  env                                  = var.env
+  frontend_bucket_id                   = module.s3.frontend_bucket_id
+  frontend_bucket_regional_domain_name = module.s3.frontend_bucket_regional_domain_name
+  frontend_bucket_arn                  = module.s3.frontend_bucket_arn
+
+  aliases         = var.enable_cloudfront_custom_domain && var.domain != "" ? ["app.${var.domain}"] : []
+  certificate_arn = var.enable_cloudfront_custom_domain && var.domain != "" ? module.acm[0].certificate_arn : null
+
+  tags = local.common_tags
+}
+
+# ── Cognito custom domain ──────────────────────────────────────────────────
+# Phase 3: only when the cert is ISSUED. Cognito refuses pending certs.
+module "cognito_custom_domain" {
+  source = "../../modules/cognito_custom_domain"
+  count  = var.enable_cognito_custom_domain && var.domain != "" ? 1 : 0
+
+  user_pool_id    = module.cognito.user_pool_id
+  domain          = "auth.${var.domain}"
+  certificate_arn = module.acm[0].certificate_arn
 }
 
 # ── Outputs ────────────────────────────────────────────────────────────────
@@ -748,4 +840,62 @@ output "lambda_function_names" {
 output "webhook_api_endpoint" {
   description = "Default API Gateway endpoint for inbound webhooks. Paste into GitHub/Jira/Linear webhook config until custom domain is wired in 6E."
   value       = module.api_gateway_webhook.api_endpoint
+}
+
+# ── 6E outputs ─────────────────────────────────────────────────────────────
+output "acm_certificate_arn" {
+  description = "ACM cert ARN, or null if domain not set."
+  value       = var.domain != "" ? module.acm[0].certificate_arn : null
+}
+
+output "acm_validation_records" {
+  description = "DNS records to paste into Hostinger. Map: domain → {record_name, record_value, record_type}. Add each as a CNAME; cert validates within ~30 minutes."
+  value       = var.domain != "" ? module.acm[0].domain_validation_options : {}
+}
+
+output "acm_certificate_status" {
+  description = "PENDING_VALIDATION until the CNAMEs land in Hostinger and AWS rechecks."
+  value       = var.domain != "" ? module.acm[0].certificate_status : "n/a"
+}
+
+output "alb_dns_name" {
+  description = "ALB hostname. CNAME api.<domain> here at Hostinger."
+  value       = var.domain != "" ? module.alb[0].alb_dns_name : null
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront `.cloudfront.net` hostname. CNAME app.<domain> here at Hostinger (once enable_cloudfront_custom_domain is true)."
+  value       = module.cloudfront.distribution_domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "Used by the GitHub Actions deploy pipeline to invalidate cache."
+  value       = module.cloudfront.distribution_id
+}
+
+output "cognito_custom_domain_target" {
+  description = "Underlying CloudFront ARN behind the Cognito custom domain (auth.<domain>). CNAME auth.<domain> to the CloudFront distribution at Hostinger once enable_cognito_custom_domain is true."
+  value       = var.enable_cognito_custom_domain && var.domain != "" ? module.cognito_custom_domain[0].cloudfront_distribution : null
+}
+
+# Convenient summary of DNS records you need to add at Hostinger.
+output "hostinger_dns_records_needed" {
+  description = "Human-readable summary of every DNS record the user needs to add. Lists only the records relevant to the currently-enabled toggles."
+  value = var.domain == "" ? "set var.domain to see DNS records" : merge(
+    {
+      "ACM validation (one CNAME per name in the cert, see acm_validation_records output)" = "see acm_validation_records output"
+    },
+    {
+      "api.${var.domain} (CNAME → ALB)" = module.alb[0].alb_dns_name
+    },
+    var.enable_cloudfront_custom_domain ? {
+      "app.${var.domain} (CNAME → CloudFront)" = module.cloudfront.distribution_domain_name
+    } : {},
+    var.enable_cognito_custom_domain ? {
+      "auth.${var.domain} (CNAME → Cognito CloudFront)" = "see cognito_custom_domain_target output"
+    } : {},
+    {
+      "webhooks.${var.domain} (CNAME → API Gateway)" = trimprefix(module.api_gateway_webhook.api_endpoint, "https://")
+    },
+  )
 }
