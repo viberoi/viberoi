@@ -6,6 +6,17 @@ Header: `Authorization: Bearer <Cognito-access-token>`.
 wraps the result in `ApiAuthContext` and exposes `require_role` for
 per-route RBAC. Tests inject synthetic contexts via
 `app.dependency_overrides[authenticate]`.
+
+Dev-mode passthrough
+--------------------
+When `settings.env == Env.DEV`, requests carrying `X-Dev-Org-Id` /
+`X-Dev-Developer-Id` / `X-Dev-Role` / optional `X-Dev-Team-Id` headers
+short-circuit JWT validation and build an `ApiAuthContext` directly
+from the header values. This unblocks the dev frontend (Slice 5D)
+before real Cognito is provisioned in Slice 6.
+
+The dev path is GATED on `settings.env`. Production never reaches the
+passthrough — `verify_jwt` is the only auth source there.
 """
 
 from __future__ import annotations
@@ -22,6 +33,7 @@ from viberoi_shared.cognito import (
     CognitoVerificationError,
     verify_jwt,
 )
+from viberoi_shared.config import Env, get_settings
 from viberoi_shared.errors import Forbidden, Unauthorized
 from viberoi_shared.logging import bind_request_context, get_logger
 from viberoi_shared.types.enums import Role
@@ -47,23 +59,56 @@ def _parse_bearer(request: Request) -> str:
     return token
 
 
+def _try_dev_passthrough(request: Request) -> ApiAuthContext | None:
+    """Dev-only auth path. Returns the constructed context if the request
+    carries the dev headers AND the environment is `dev`. Otherwise
+    returns None and lets the caller fall through to JWT verification.
+    """
+    if get_settings().env != Env.DEV:
+        return None
+    org_header = request.headers.get("x-dev-org-id")
+    dev_header = request.headers.get("x-dev-developer-id")
+    role_header = request.headers.get("x-dev-role")
+    if not org_header or not dev_header or not role_header:
+        return None
+    try:
+        ctx = ApiAuthContext(
+            developer_id=UUID(dev_header),
+            org_id=UUID(org_header),
+            role=Role(role_header),
+            team_id=UUID(request.headers["x-dev-team-id"])
+            if request.headers.get("x-dev-team-id")
+            else None,
+        )
+    except (ValueError, KeyError):
+        # Malformed dev header → fall through; verify_jwt will reject too.
+        return None
+    logger.info("api_dev_auth_passthrough", role=ctx.role.value)
+    return ctx
+
+
 async def authenticate(request: Request) -> ApiAuthContext:
     """Parse + verify the Cognito access token; build the auth context.
 
     Verification failure → `Unauthorized` (no verifier detail leaked).
+    In `dev` env, X-Dev-* headers short-circuit the JWT path.
     """
-    token = _parse_bearer(request)
-    try:
-        claims: CognitoClaims = await verify_jwt(token)
-    except CognitoVerificationError:
-        raise Unauthorized from None
+    dev_ctx = _try_dev_passthrough(request)
+    if dev_ctx is not None:
+        ctx = dev_ctx
+    else:
+        token = _parse_bearer(request)
+        try:
+            claims: CognitoClaims = await verify_jwt(token)
+        except CognitoVerificationError:
+            raise Unauthorized from None
+        ctx = ApiAuthContext(
+            developer_id=claims.developer_id,
+            org_id=claims.org_id,
+            role=claims.role,
+            team_id=claims.team_id,
+        )
 
-    ctx = ApiAuthContext(
-        developer_id=claims.developer_id,
-        org_id=claims.org_id,
-        role=claims.role,
-        team_id=claims.team_id,
-    )
     bind_request_context(
         request_id=getattr(request.state, "request_id", "unknown"),
         org_id=str(ctx.org_id),
