@@ -59,6 +59,17 @@ class SharedSettings(BaseSettings):
     # KMS
     kms_key_id: str = "alias/viberoi-pii"
 
+    # Cognito
+    # `cognito_user_pool_id`: required in staging/prod, defaulted for tests.
+    # `cognito_region`: usually matches `aws_region`; kept separate so a future
+    # multi-region pool can override.
+    # `cognito_app_client_id`: the access token's `client_id` claim must match.
+    # `cognito_jwt_leeway_s`: clock-skew tolerance on `exp`/`iat`.
+    cognito_user_pool_id: str = "us-east-1_STUB000000"
+    cognito_region: str = "us-east-1"
+    cognito_app_client_id: str = "stub-client-id"
+    cognito_jwt_leeway_s: int = 30
+
     # Crypto (Argon2id parameters — OWASP 2024 recommendation)
     argon2_time_cost: int = 3
     argon2_memory_cost_kib: int = 65536  # 64 MB

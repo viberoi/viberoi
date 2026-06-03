@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import aioboto3  # noqa: TID251 — this is the one place boto3 is allowed
+import aioboto3
 from botocore.config import Config
 
 from viberoi_shared.config import get_settings
@@ -69,4 +69,15 @@ async def sqs_client() -> AsyncIterator[Any]:
 @asynccontextmanager
 async def secrets_client() -> AsyncIterator[Any]:
     async with _session().client("secretsmanager", **_client_kwargs()) as client:
+        yield client
+
+
+@asynccontextmanager
+async def cognito_idp_client() -> AsyncIterator[Any]:
+    """Cognito User Pool admin API client.
+
+    Used by the PostConfirmation Lambda to set `custom:org_id`,
+    `custom:role`, `custom:team_id` on the user after row creation.
+    """
+    async with _session().client("cognito-idp", **_client_kwargs()) as client:
         yield client

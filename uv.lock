@@ -5,6 +5,8 @@ requires-python = "==3.12.*"
 [manifest]
 members = [
     "viberoi",
+    "viberoi-cognito-postconfirm",
+    "viberoi-cognito-presignup",
     "viberoi-ingest",
     "viberoi-integration",
     "viberoi-shared",
@@ -1174,6 +1176,28 @@ dev = [
     { name = "respx", specifier = ">=0.21.0" },
     { name = "ruff", specifier = ">=0.6.0" },
 ]
+
+[[package]]
+name = "viberoi-cognito-postconfirm"
+version = "0.1.0"
+source = { editable = "backend/lambdas/cognito_postconfirm" }
+dependencies = [
+    { name = "viberoi-shared" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "viberoi-shared", editable = "backend/packages/shared" }]
+
+[[package]]
+name = "viberoi-cognito-presignup"
+version = "0.1.0"
+source = { editable = "backend/lambdas/cognito_presignup" }
+dependencies = [
+    { name = "viberoi-shared" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "viberoi-shared", editable = "backend/packages/shared" }]
 
 [[package]]
 name = "viberoi-ingest"

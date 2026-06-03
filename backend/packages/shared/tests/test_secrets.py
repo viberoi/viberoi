@@ -4,7 +4,6 @@ These don't need LocalStack — the wrapper falls back to env vars when
 `VIBEROI_ENV=dev|test` and Secrets Manager doesn't have the key.
 """
 
-import os
 
 import pytest
 

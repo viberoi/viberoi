@@ -86,7 +86,7 @@ def _verify_eventbridge(event: dict[str, Any], expected_source: str) -> None:
         raise Unauthorized
 
 
-def verify(event: dict[str, Any], context: Any, *, expected_source: str) -> None:  # noqa: ARG001
+def verify(event: dict[str, Any], context: Any, *, expected_source: str) -> None:
     """Validate the Lambda invocation source. Raises `Unauthorized` on mismatch.
 
     `expected_source` patterns:

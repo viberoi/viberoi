@@ -21,8 +21,8 @@ def _reset_caches(monkeypatch: pytest.MonkeyPatch) -> None:
         '{"pepper":"test-pepper-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
     )
     monkeypatch.setenv("VIBEROI_AWS_ENDPOINT_URL", "http://127.0.0.1:1")
-    from viberoi_shared.config.settings import get_settings
     from viberoi_shared import secrets
+    from viberoi_shared.config.settings import get_settings
 
     get_settings.cache_clear()
     secrets.reset_cache()

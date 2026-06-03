@@ -12,8 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, SmallInteger, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import BYTEA, JSONB, TIMESTAMP
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import BYTEA, JSONB, TIMESTAMP, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from viberoi_shared.db.base import Base

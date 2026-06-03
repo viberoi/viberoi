@@ -1,18 +1,26 @@
-"""Cognito JWT validation + JWKS cache.
+"""Cognito access-token JWT validation + JWKS cache.
 
 `verify_jwt(token)` returns a typed `CognitoClaims` Pydantic model
 with `sub`, `org_id`, `role`, `team_id` custom attributes resolved.
-JWKS cached in-process 1h; cache miss triggers refresh.
+JWKS cached in-process 1h; an unknown `kid` triggers one forced
+refresh to handle key rotation.
 
-Slice 4 contract: `CognitoClaims` shape locked; `verify_jwt` is a stub
-that raises `CognitoNotImplemented`. Services use dependency_overrides
-in tests; production wiring lands with Slice 5.
+Slice 5A: real implementation. `CognitoNotImplemented` retained as a
+re-export so any caller still importing it gets a clean migration path.
 """
 
 from viberoi_shared.cognito.verify import (
     CognitoClaims,
     CognitoNotImplemented,
+    CognitoVerificationError,
+    reset_jwks_cache,
     verify_jwt,
 )
 
-__all__ = ["CognitoClaims", "CognitoNotImplemented", "verify_jwt"]
+__all__ = [
+    "CognitoClaims",
+    "CognitoNotImplemented",
+    "CognitoVerificationError",
+    "reset_jwks_cache",
+    "verify_jwt",
+]

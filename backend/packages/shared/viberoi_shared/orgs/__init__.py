@@ -7,6 +7,9 @@ PII columns (email, names, GitHub username) are KMS-encrypted via
 
 from viberoi_shared.orgs.models import Developer, Org, OrgToken, Team
 from viberoi_shared.orgs.repository import (
+    count_developers,
+    create_developer_if_missing,
+    create_org_if_missing,
     get_developer,
     get_developer_by_cognito_sub,
     get_developer_by_email_hash,
@@ -14,6 +17,7 @@ from viberoi_shared.orgs.repository import (
     get_org_by_domain,
     get_org_token,
     list_teams,
+    lock_org_for_update,
 )
 
 __all__ = [
@@ -21,6 +25,9 @@ __all__ = [
     "Org",
     "OrgToken",
     "Team",
+    "count_developers",
+    "create_developer_if_missing",
+    "create_org_if_missing",
     "get_developer",
     "get_developer_by_cognito_sub",
     "get_developer_by_email_hash",
@@ -28,4 +35,5 @@ __all__ = [
     "get_org_by_domain",
     "get_org_token",
     "list_teams",
+    "lock_org_for_update",
 ]

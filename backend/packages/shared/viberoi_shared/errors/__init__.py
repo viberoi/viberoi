@@ -16,8 +16,8 @@ do not depend on FastAPI (CLI tools, Lambdas, the agent's mock harness).
 """
 
 from viberoi_shared.errors.types import (
-    Conflict,
     ConfigError,
+    Conflict,
     ExternalServiceError,
     Forbidden,
     Gone,
@@ -30,8 +30,8 @@ from viberoi_shared.errors.types import (
 )
 
 __all__ = [
-    "Conflict",
     "ConfigError",
+    "Conflict",
     "ExternalServiceError",
     "Forbidden",
     "Gone",

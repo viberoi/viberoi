@@ -55,13 +55,12 @@ async def org_scoped_session(org_id: str | UUID) -> AsyncIterator[AsyncSession]:
     safe_org_id = _validate_org_id(org_id)
     factory = get_session_factory()
 
-    async with factory() as session:
-        async with session.begin():
-            await session.execute(
-                text("SELECT set_config('app.current_org_id', :oid, true)"),
-                {"oid": safe_org_id},
-            )
-            yield session
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SELECT set_config('app.current_org_id', :oid, true)"),
+            {"oid": safe_org_id},
+        )
+        yield session
 
 
 @asynccontextmanager
@@ -78,6 +77,5 @@ async def superuser_session() -> AsyncIterator[AsyncSession]:
     tenant-isolation bugs and we lose it here.
     """
     factory = get_admin_session_factory()
-    async with factory() as session:
-        async with session.begin():
-            yield session
+    async with factory() as session, session.begin():
+        yield session

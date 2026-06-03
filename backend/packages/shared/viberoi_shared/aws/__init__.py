@@ -7,6 +7,18 @@ They import a typed client factory from here, which:
   - points at LocalStack in dev (`aws_endpoint_url` in settings)
 """
 
-from viberoi_shared.aws.clients import kms_client, s3_client, secrets_client, sqs_client
+from viberoi_shared.aws.clients import (
+    cognito_idp_client,
+    kms_client,
+    s3_client,
+    secrets_client,
+    sqs_client,
+)
 
-__all__ = ["kms_client", "s3_client", "secrets_client", "sqs_client"]
+__all__ = [
+    "cognito_idp_client",
+    "kms_client",
+    "s3_client",
+    "secrets_client",
+    "sqs_client",
+]

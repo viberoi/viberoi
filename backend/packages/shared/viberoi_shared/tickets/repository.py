@@ -23,7 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from viberoi_shared.errors.types import NotFound
 from viberoi_shared.tickets.models import Sprint, Ticket
 
-
 # ── Sprints ────────────────────────────────────────────────────────────────
 
 

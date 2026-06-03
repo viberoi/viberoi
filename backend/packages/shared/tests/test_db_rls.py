@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import select, text
 
 from viberoi_shared.db import org_scoped_session, superuser_session
-from viberoi_shared.orgs.models import Developer, Org, OrgToken
+from viberoi_shared.orgs.models import Developer, Org
 from viberoi_shared.sessions import upsert
 from viberoi_shared.sessions.models import SessionRow
 from viberoi_shared.types import (

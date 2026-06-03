@@ -1,10 +1,15 @@
 """Cognito-based admin auth for Integration service endpoints.
 
-Header: `Authorization: Bearer <Cognito-JWT>`.
+Header: `Authorization: Bearer <Cognito-access-token>`.
 
-`viberoi_shared.cognito.verify_jwt` is stubbed (raises until Slice 5).
-For development + tests, use FastAPI `dependency_overrides[authenticate]`
-to inject a synthetic `IntegrationAuthContext`.
+`viberoi_shared.cognito.verify_jwt` validates the access token's RS256
+signature against the user pool's JWKS, plus `iss` / `client_id` /
+`exp` / `token_use`. Custom attributes (`developer_id`, `org_id`,
+`role`, `team_id`) are populated by the PostConfirmation Lambda.
+
+Tests still inject synthetic contexts via
+`app.dependency_overrides[authenticate]`; the production path runs the
+real verifier.
 """
 
 from __future__ import annotations
@@ -16,7 +21,11 @@ from uuid import UUID
 
 from fastapi import Depends, Request
 
-from viberoi_shared.cognito import CognitoClaims, verify_jwt
+from viberoi_shared.cognito import (
+    CognitoClaims,
+    CognitoVerificationError,
+    verify_jwt,
+)
 from viberoi_shared.errors import Forbidden, Unauthorized
 from viberoi_shared.logging import bind_request_context, get_logger
 from viberoi_shared.types.enums import Role
@@ -43,16 +52,23 @@ def _parse_bearer(request: Request) -> str:
 
 
 async def authenticate(request: Request) -> IntegrationAuthContext:
-    """Parse + verify the Cognito JWT; build the auth context.
+    """Parse + verify the Cognito access token; build the auth context.
 
-    In Slice 4, `verify_jwt` raises `CognitoNotImplemented`. Tests override
-    this dependency via `app.dependency_overrides[authenticate] = ...`.
+    Verification failure → `CognitoVerificationError` → handled by the
+    global error handler as 401 (no detail leaked).
+
+    Tests override this dependency via
+    `app.dependency_overrides[authenticate] = ...`.
     """
     token = _parse_bearer(request)
-    claims: CognitoClaims = await verify_jwt(token)
+    try:
+        claims: CognitoClaims = await verify_jwt(token)
+    except CognitoVerificationError:
+        # Don't echo the verifier's error message — caller sees 401.
+        raise Unauthorized from None
 
     ctx = IntegrationAuthContext(
-        developer_id=UUID(claims.sub),
+        developer_id=claims.developer_id,
         org_id=claims.org_id,
         role=claims.role,
         team_id=claims.team_id,
