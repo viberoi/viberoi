@@ -12,16 +12,21 @@ reads and recomputes attribution via `get_by_external_id()` /
 
 from __future__ import annotations
 
+import base64
+import binascii
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from viberoi_shared.errors.types import NotFound
+from viberoi_shared.errors.types import NotFound, ValidationFailed
+from viberoi_shared.orgs.models import Developer
 from viberoi_shared.sessions.models import SessionRow
+from viberoi_shared.types.enums import Role
 from viberoi_shared.types.session import Session
 
 # Columns that NEVER change after first insert. Excluded from upsert
@@ -148,3 +153,95 @@ async def get_by_external_id(
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+# ── Paginated list (Slice 5B) ───────────────────────────────────────────────
+
+
+# Hard upper bound — even an explicit `?limit=999` won't go above this.
+SESSION_LIST_HARD_CAP = 200
+SESSION_LIST_DEFAULT = 50
+
+
+def _encode_cursor(started_at: datetime, session_uuid: UUID) -> str:
+    """Cursor is base64(`{started_at_iso}|{uuid}`) — opaque to callers."""
+    raw = f"{started_at.isoformat()}|{session_uuid}".encode()
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        raw = base64.urlsafe_b64decode(cursor + padding).decode("utf-8")
+        ts_str, uuid_str = raw.split("|", 1)
+        return datetime.fromisoformat(ts_str), UUID(uuid_str)
+    except (binascii.Error, UnicodeDecodeError, ValueError) as e:
+        raise ValidationFailed("Invalid pagination cursor.") from e
+
+
+async def list_sessions(
+    db: AsyncSession,
+    *,
+    org_uuid: UUID,
+    viewer_role: Role,
+    viewer_developer_id: UUID,
+    viewer_team_id: UUID | None,
+    cursor: str | None = None,
+    limit: int = SESSION_LIST_DEFAULT,
+) -> tuple[list[SessionRow], str | None]:
+    """Return one page of sessions plus the next cursor.
+
+    Role-based filtering applied here so callers don't get to choose:
+      - OrgAdmin → all org sessions
+      - TeamLead → only sessions by developers in the lead's team
+      - Developer → only the caller's own sessions
+
+    Ordering: `(started_at DESC, id DESC)` — stable across inserts.
+    Cursor encodes the last `(started_at, id)` pair of the page; the
+    next request returns rows strictly older than it.
+    """
+    limit = max(1, min(limit, SESSION_LIST_HARD_CAP))
+
+    stmt = select(SessionRow).where(SessionRow.org_id == org_uuid)
+
+    if viewer_role == Role.DEVELOPER:
+        stmt = stmt.where(SessionRow.developer_id == viewer_developer_id)
+    elif viewer_role == Role.TEAM_LEAD:
+        if viewer_team_id is None:
+            # TeamLead with no team assigned → no visible rows.
+            return [], None
+        stmt = stmt.join(
+            Developer, Developer.id == SessionRow.developer_id
+        ).where(Developer.team_id == viewer_team_id)
+    # OrgAdmin: no additional filter — RLS already scopes to org_id.
+
+    if cursor is not None:
+        cur_started, cur_id = _decode_cursor(cursor)
+        # Lexicographic comparison on (started_at, id) — equivalent to a
+        # composite-key < check, which Postgres can use the index for.
+        stmt = stmt.where(
+            or_(
+                SessionRow.started_at < cur_started,
+                and_(
+                    SessionRow.started_at == cur_started,
+                    SessionRow.id < cur_id,
+                ),
+            )
+        )
+
+    stmt = (
+        stmt.order_by(SessionRow.started_at.desc(), SessionRow.id.desc())
+        # Fetch limit+1 so we know whether there's another page.
+        .limit(limit + 1)
+    )
+
+    result = await db.execute(stmt)
+    rows = list(result.scalars().all())
+
+    next_cursor: str | None = None
+    if len(rows) > limit:
+        rows = rows[:limit]
+        last = rows[-1]
+        next_cursor = _encode_cursor(last.started_at, last.id)
+
+    return rows, next_cursor

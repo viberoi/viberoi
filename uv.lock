@@ -5,6 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 members = [
     "viberoi",
+    "viberoi-api",
     "viberoi-cognito-postconfirm",
     "viberoi-cognito-presignup",
     "viberoi-ingest",
@@ -1175,6 +1176,23 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "respx", specifier = ">=0.21.0" },
     { name = "ruff", specifier = ">=0.6.0" },
+]
+
+[[package]]
+name = "viberoi-api"
+version = "0.1.0"
+source = { editable = "backend/services/api" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "viberoi-shared" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.111.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
+    { name = "viberoi-shared", editable = "backend/packages/shared" },
 ]
 
 [[package]]

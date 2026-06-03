@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -186,3 +186,44 @@ async def find_tickets_by_external_ids(
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+# ── Listings + rollups for the API service (Slice 5B) ───────────────────────
+
+
+async def list_sprints_with_counts(
+    db: AsyncSession, org_uuid: UUID, *, include_states: list[str] | None = None
+) -> list[tuple[Sprint, int]]:
+    """Return `(Sprint, ticket_count)` rows.
+
+    `include_states` filters by sprint state; None = all.
+    Ordered: active first, then by `started_at` desc.
+    """
+    count_subq = (
+        select(Ticket.sprint_id, func.count(Ticket.id).label("ticket_count"))
+        .where(Ticket.org_id == org_uuid)
+        .group_by(Ticket.sprint_id)
+        .subquery()
+    )
+    stmt = (
+        select(Sprint, func.coalesce(count_subq.c.ticket_count, 0))
+        .where(Sprint.org_id == org_uuid)
+        .outerjoin(count_subq, Sprint.id == count_subq.c.sprint_id)
+        .order_by(
+            (Sprint.state == "active").desc(),
+            Sprint.started_at.desc().nullslast(),
+        )
+    )
+    if include_states:
+        stmt = stmt.where(Sprint.state.in_(include_states))
+    result = await db.execute(stmt)
+    return [(sp, int(cnt)) for sp, cnt in result.all()]
+
+
+async def count_tickets_for_sprint(
+    db: AsyncSession, *, org_uuid: UUID, sprint_uuid: UUID
+) -> int:
+    stmt = select(func.count(Ticket.id)).where(
+        Ticket.org_id == org_uuid, Ticket.sprint_id == sprint_uuid
+    )
+    return int((await db.execute(stmt)).scalar_one())
