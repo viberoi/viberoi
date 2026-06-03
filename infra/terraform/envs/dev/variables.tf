@@ -39,3 +39,28 @@ variable "domain" {
   default     = ""
   description = "Public domain for ALB + CloudFront. Empty until wired in 6E."
 }
+
+# ── Cognito federated IdPs (optional) ──────────────────────────────────────
+# Leave empty and Cognito stays native-only (email + OTP). Fill in via
+# `TF_VAR_google_client_id` etc when you have IdP credentials.
+variable "google_client_id" {
+  type    = string
+  default = ""
+}
+
+variable "google_client_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "github_oidc_client_id" {
+  type    = string
+  default = ""
+}
+
+variable "github_oidc_client_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}

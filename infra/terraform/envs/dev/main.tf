@@ -138,6 +138,37 @@ module "redis" {
   tags               = local.common_tags
 }
 
+# ── Cognito ────────────────────────────────────────────────────────────────
+# Lambda trigger ARNs left null — they get wired in 6D once the
+# container Lambdas exist. The conditional `lambda_config` block in
+# the cognito module keeps this clean.
+module "cognito" {
+  source = "../../modules/cognito"
+
+  project = var.project
+  env     = var.env
+
+  # Dev: localhost callbacks. 6E adds the real domain.
+  callback_urls = [
+    "http://localhost:5173/auth/callback",
+    "http://127.0.0.1:5173/auth/callback",
+  ]
+  logout_urls = [
+    "http://localhost:5173/",
+    "http://127.0.0.1:5173/",
+  ]
+
+  # Federated IdPs — empty defaults → no IdPs created. Set
+  # TF_VAR_google_client_id etc to enable.
+  google_client_id          = var.google_client_id
+  google_client_secret      = var.google_client_secret
+  github_oidc_client_id     = var.github_oidc_client_id
+  github_oidc_client_secret = var.github_oidc_client_secret
+
+  deletion_protection = "INACTIVE" # dev — easier teardown
+  tags                = local.common_tags
+}
+
 # ── Outputs ────────────────────────────────────────────────────────────────
 # Re-export the things later modules + the GitHub Actions deploy pipeline
 # need. Anything that's *not* secret can live here.
@@ -237,4 +268,29 @@ output "sqs_dlq_arns" {
 output "secret_arns" {
   description = "All Secrets Manager ARNs — task roles get decrypt permission on these in 6D."
   value       = module.secrets.all_secret_arns
+}
+
+# ── 6C outputs ─────────────────────────────────────────────────────────────
+output "cognito_user_pool_id" {
+  description = "Set in backend settings as cognito_user_pool_id."
+  value       = module.cognito.user_pool_id
+}
+
+output "cognito_user_pool_arn" {
+  value = module.cognito.user_pool_arn
+}
+
+output "cognito_app_client_id" {
+  description = "SPA client id — set in backend settings.cognito_app_client_id and in frontend Cognito config."
+  value       = module.cognito.spa_client_id
+}
+
+output "cognito_user_pool_endpoint" {
+  description = "OIDC issuer — matches the iss claim the JWT verifier expects."
+  value       = module.cognito.user_pool_endpoint
+}
+
+output "cognito_hosted_ui_domain" {
+  description = "Login URL = https://<this>/login?client_id=<client_id>&response_type=code&scope=openid+email+profile&redirect_uri=<callback>"
+  value       = module.cognito.hosted_ui_domain
 }
