@@ -95,7 +95,7 @@ async def get_callback(provider: str, request: Request) -> Response:
     except OAuthCallbackError:
         logger.warning("oauth_callback_provider_rejected", provider=provider)
         return _redirect_to_frontend("err=user_cancelled")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Don't leak details — generic error redirect.
         logger.exception(
             "oauth_callback_unhandled", provider=provider, error=str(e)

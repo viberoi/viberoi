@@ -16,7 +16,6 @@ from cryptography.hazmat.primitives.serialization import (
     PrivateFormat,
     PublicFormat,
 )
-
 from integration.app import http_client
 from integration.app.providers.base import (
     OAuthCallbackError,
@@ -77,7 +76,7 @@ def test_signed_app_jwt_has_correct_claims(
     adapter: GitHubAppAdapter, keypair: tuple[str, str]
 ) -> None:
     _, public_pem = keypair
-    token = adapter._sign_app_jwt()  # noqa: SLF001
+    token = adapter._sign_app_jwt()
     decoded = jwt.decode(token, public_pem, algorithms=["RS256"])
     assert decoded["iss"] == _APP_ID
     now = int(time.time())
@@ -126,7 +125,7 @@ async def test_complete_callback_mints_installation_token(
 @pytest.mark.respx(base_url="https://api.github.com")
 async def test_complete_callback_missing_installation_id_raises(
     adapter: GitHubAppAdapter,
-    respx_mock: respx.MockRouter,  # noqa: ARG001
+    respx_mock: respx.MockRouter,
 ) -> None:
     with pytest.raises(OAuthCallbackError):
         await adapter.complete_callback({}, redirect_uri="x")

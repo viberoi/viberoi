@@ -41,9 +41,14 @@ WORKDIR /app
 
 COPY --from=builder --chown=viberoi:viberoi /app /app
 
+# entrypoint.sh fans out into uvicorn + the SQS consumer.
+COPY --chown=viberoi:viberoi backend/services/integration/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8000
 
 USER viberoi
 EXPOSE 8000
@@ -51,7 +56,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/healthz').read()" || exit 1
 
-# In production the ECS task runs uvicorn AND the SQS consumer side-by-side via
-# an entrypoint script. For Slice 4 C1 we only ship the HTTP process —
-# the consumer lands in C5 and the script will be added then.
-CMD ["uvicorn", "integration.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# entrypoint.sh launches uvicorn AND the SQS backfill consumer side-by-side.
+# A non-zero exit from either child process exits the container; ECS replaces
+# the task. See backend/services/integration/CLAUDE.md.
+CMD ["/app/entrypoint.sh"]

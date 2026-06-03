@@ -23,6 +23,10 @@ logger = get_logger(__name__)
 # Lazy-initialised, mutable for tests. Keys are lowercase provider names.
 _REGISTRY: dict[str, ProviderAdapter] = {}
 
+# Authoritative list of provider names V1 supports — used by HTTP routes
+# that need to 404 before touching the registry. Kept in sync with `_build`.
+SUPPORTED_PROVIDERS: frozenset[str] = frozenset({"github", "jira", "linear"})
+
 
 # Placeholder PEM used in dev/test if no real GitHub App private key is
 # configured — the adapter is still constructed (no runtime check), so unit

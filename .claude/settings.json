@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(docker exec viberoi-postgres psql -U *)",
+      "Bash(docker exec viberoi-localstack awslocal *)",
+      "Bash(docker exec viberoi-redis redis-cli *)",
+      "PowerShell(Get-ChildItem*)",
+      "PowerShell(Get-CimInstance*)",
+      "PowerShell(Get-Process*)",
+      "PowerShell(Get-NetTCPConnection*)",
+      "PowerShell(Get-Service*)",
+      "PowerShell(Get-Content*)"
+    ]
+  }
+}

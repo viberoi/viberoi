@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
+from uuid import UUID
 
 import orjson
 
@@ -35,11 +36,14 @@ from integration.app.providers.base import (
     ProviderAdapter,
     ProviderConnection,
     ProviderError,
+    SyncResult,
     TokenRefreshError,
     WebhookRegistration,
     WebhookRegistrationError,
 )
+from viberoi_shared.db import org_scoped_session
 from viberoi_shared.logging import get_logger
+from viberoi_shared.tickets import upsert_sprint, upsert_ticket
 
 logger = get_logger(__name__)
 
@@ -51,6 +55,8 @@ API_BASE = "https://api.atlassian.com/ex/jira"
 # `offline_access` is mandatory for refresh tokens. `read:jira-user` is needed
 # to dereference issue.assignee. `read:jira-work` covers issues/sprints/boards.
 DEFAULT_SCOPES = "read:jira-work read:jira-user offline_access"
+
+HTTP_ERROR_FLOOR = 400
 
 WEBHOOK_EVENTS = [
     "jira:issue_created",
@@ -144,7 +150,7 @@ class JiraAdapter(ProviderAdapter):
             },
             content=urlencode(body).encode("utf-8"),
         )
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_FLOOR:
             logger.warning(
                 "jira_token_exchange_failed",
                 grant_type=grant_type,
@@ -177,7 +183,7 @@ class JiraAdapter(ProviderAdapter):
                 "Accept": "application/json",
             },
         )
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_FLOOR:
             raise ProviderError(
                 f"Jira accessible-resources returned {response.status_code}."
             )
@@ -202,7 +208,7 @@ class JiraAdapter(ProviderAdapter):
                 "Accept": "application/json",
             },
         )
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_FLOOR:
             logger.warning(
                 "jira_field_discovery_failed", status=response.status_code
             )
@@ -253,7 +259,7 @@ class JiraAdapter(ProviderAdapter):
                 }
             ),
         )
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_FLOOR:
             raise WebhookRegistrationError(
                 f"Jira webhook create returned {response.status_code}."
             )
@@ -273,6 +279,169 @@ class JiraAdapter(ProviderAdapter):
         # Empty string for `secret` documents that no HMAC secret is used for
         # Jira; the storage layer skips writing the column when this is "".
         return WebhookRegistration(provider_webhook_ids=webhook_ids, secret="")
+
+    # ── Sync ───────────────────────────────────────────────────────────────
+
+    async def sync(
+        self,
+        connection: ProviderConnection,
+        *,
+        org_id: UUID,
+        since: datetime | None,
+    ) -> SyncResult:
+        """V1: fetch board sprints + recent issues for the discovered cloud_id.
+
+        - sprints: paginate `GET /rest/agile/1.0/board/{boardId}/sprint`
+          (limited to the first board for V1 — multi-board fan-out is V2).
+        - tickets: `POST /rest/api/3/search/jql` JQL `updated >= "since"`,
+          page until exhausted or `MAX_TICKETS` reached.
+        - system: `jira`.
+        - external_id: the issue key (e.g. `ABC-123`).
+        """
+        if since is None:
+            since = datetime.now(tz=UTC) - timedelta(days=90)
+        cloud_id = connection.extra.get("cloud_id")
+        if not cloud_id:
+            return SyncResult(errors=["jira sync: cloud_id missing from connection"])
+
+        sprints = 0
+        tickets = 0
+        errors: list[str] = []
+
+        try:
+            sprints += await self._sync_sprints(connection, cloud_id, org_id)
+        except Exception as e:
+            errors.append(f"jira sprints: {e}")
+
+        try:
+            tickets += await self._sync_tickets(connection, cloud_id, org_id, since)
+        except Exception as e:
+            errors.append(f"jira tickets: {e}")
+
+        return SyncResult(
+            tickets_upserted=tickets, sprints_upserted=sprints, errors=errors
+        )
+
+    async def _sync_sprints(
+        self,
+        connection: ProviderConnection,
+        cloud_id: str,
+        org_id: UUID,
+    ) -> int:
+        """Fetch sprints from the first board only (V1)."""
+        boards_resp = await http_request(
+            "GET",
+            f"{API_BASE}/{cloud_id}/rest/agile/1.0/board",
+            headers={
+                "Authorization": f"Bearer {connection.access_token}",
+                "Accept": "application/json",
+            },
+            params={"maxResults": 1},
+        )
+        if boards_resp.status_code >= HTTP_ERROR_FLOOR:
+            return 0
+        values = boards_resp.json().get("values", [])
+        if not values:
+            return 0
+        board_id = str(values[0]["id"])
+
+        sprints_resp = await http_request(
+            "GET",
+            f"{API_BASE}/{cloud_id}/rest/agile/1.0/board/{board_id}/sprint",
+            headers={
+                "Authorization": f"Bearer {connection.access_token}",
+                "Accept": "application/json",
+            },
+            params={"maxResults": 50},
+        )
+        if sprints_resp.status_code >= HTTP_ERROR_FLOOR:
+            return 0
+        count = 0
+        for sprint in sprints_resp.json().get("values", []):
+            async with org_scoped_session(org_id) as db:
+                await upsert_sprint(
+                    db,
+                    org_id=org_id,
+                    system="jira",
+                    external_id=str(sprint["id"]),
+                    name=sprint["name"],
+                    state=sprint.get("state", "future").lower(),
+                    started_at=_parse_jira_timestamp(sprint.get("startDate")),
+                    ended_at=_parse_jira_timestamp(sprint.get("endDate")),
+                    completed_at=_parse_jira_timestamp(sprint.get("completeDate")),
+                    board_id=board_id,
+                )
+            count += 1
+        return count
+
+    async def _sync_tickets(
+        self,
+        connection: ProviderConnection,
+        cloud_id: str,
+        org_id: UUID,
+        since: datetime,
+    ) -> int:
+        """Page through legacy JQL issue search. Capped at MAX_TICKETS per run.
+
+        Uses `GET /rest/api/3/search` rather than the new `POST /search/jql`
+        per the file-level note about pagination bugs in the new endpoint.
+        """
+        jql = f'updated >= "{since.strftime("%Y-%m-%d %H:%M")}"'
+        start_at = 0
+        page_size = 100
+        max_tickets = 500
+        count = 0
+        while count < max_tickets:
+            resp = await http_request(
+                "GET",
+                f"{API_BASE}/{cloud_id}/rest/api/3/search",
+                headers={
+                    "Authorization": f"Bearer {connection.access_token}",
+                    "Accept": "application/json",
+                },
+                params={
+                    "jql": jql,
+                    "fields": "summary,status,created,resolutiondate",
+                    "startAt": start_at,
+                    "maxResults": page_size,
+                },
+            )
+            if resp.status_code >= HTTP_ERROR_FLOOR:
+                break
+            data = resp.json()
+            issues = data.get("issues", [])
+            if not issues:
+                break
+            for issue in issues:
+                fields = issue.get("fields", {})
+                created = _parse_jira_timestamp(fields.get("created"))
+                if created is None:
+                    continue
+                resolved = _parse_jira_timestamp(fields.get("resolutiondate"))
+                status_key = (
+                    fields.get("status", {})
+                    .get("statusCategory", {})
+                    .get("key", "open")
+                )
+                async with org_scoped_session(org_id) as db:
+                    await upsert_ticket(
+                        db,
+                        org_id=org_id,
+                        system="jira",
+                        external_id=issue["key"],
+                        title=fields.get("summary", "")[:500],
+                        status="closed" if resolved else status_key,
+                        created_at_external=created,
+                        closed_at_external=resolved,
+                    )
+                count += 1
+                if count >= max_tickets:
+                    break
+            total = data.get("total", 0)
+            start_at += len(issues)
+            if start_at >= total:
+                break
+        return count
 
     async def refresh_webhooks(
         self, connection: ProviderConnection, webhook_ids: list[str]
@@ -321,5 +490,23 @@ class JiraAdapter(ProviderAdapter):
                     {"webhookIds": [int(w) for w in webhook_ids]}
                 ),
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("jira_revoke_failed", error=str(e))
+
+
+def _parse_jira_timestamp(value: str | None) -> datetime | None:
+    """Jira returns ISO 8601 with offset (e.g. `2026-06-01T10:00:00.000+0000`)."""
+    if not value:
+        return None
+    # Normalize `+0000` (5-char suffix: sign + 4 digits) → `+00:00`.
+    tz_suffix_len = 5
+    if (
+        len(value) >= tz_suffix_len
+        and (value[-tz_suffix_len] in "+-")
+        and ":" not in value[-tz_suffix_len:]
+    ):
+        value = value[:-tz_suffix_len] + value[-tz_suffix_len:-2] + ":" + value[-2:]
+    try:
+        return datetime.fromisoformat(value).astimezone(UTC)
+    except ValueError:
+        return None

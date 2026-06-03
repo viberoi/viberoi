@@ -3,7 +3,6 @@
 from uuid import uuid4
 
 import pytest
-
 from integration.app import circuit_breaker as cb
 
 pytestmark = pytest.mark.integration
@@ -12,7 +11,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture(autouse=True)
 async def _reset_breaker() -> None:
     """Use a unique org per test for isolation; no explicit cleanup needed."""
-    yield
+    return
 
 
 async def test_initially_closed() -> None:

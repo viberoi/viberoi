@@ -5,7 +5,6 @@ from __future__ import annotations
 import orjson
 import pytest
 import respx
-
 from integration.app import http_client
 from integration.app.providers.base import (
     OAuthCallbackError,
@@ -19,7 +18,7 @@ from integration.app.providers.jira import JiraAdapter
 
 @pytest.fixture
 def adapter() -> JiraAdapter:
-    return JiraAdapter(client_id="cid", client_secret="csec")  # noqa: S106
+    return JiraAdapter(client_id="cid", client_secret="csec")
 
 
 @pytest.fixture(autouse=True)
@@ -210,7 +209,7 @@ async def test_register_webhook_returns_ids(
 
 @pytest.mark.respx
 async def test_register_webhook_without_cloud_id_raises(
-    adapter: JiraAdapter, respx_mock: respx.MockRouter  # noqa: ARG001
+    adapter: JiraAdapter, respx_mock: respx.MockRouter
 ) -> None:
     with pytest.raises(WebhookRegistrationError):
         await adapter.register_webhook(
@@ -282,7 +281,7 @@ async def test_revoke_deletes_registered_webhooks(
 
 @pytest.mark.respx
 async def test_revoke_without_state_is_noop(
-    adapter: JiraAdapter, respx_mock: respx.MockRouter  # noqa: ARG001
+    adapter: JiraAdapter, respx_mock: respx.MockRouter
 ) -> None:
     """No cloud_id / webhook_ids → nothing to clean up."""
     await adapter.revoke(ProviderConnection(access_token="t", extra={}))

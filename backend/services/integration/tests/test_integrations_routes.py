@@ -5,15 +5,15 @@ Orchestrator mocked — only HTTP shape + RBAC under test.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Callable
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from integration.api import integrations as integrations_routes
 from integration.app.auth import IntegrationAuthContext
+
 from viberoi_shared.errors import NotFound
 
 
@@ -80,7 +80,7 @@ def test_list_any_role_can_access(
     client_as: Callable,
     ctx_name: str,
     request: pytest.FixtureRequest,
-    mock_list: AsyncMock,  # noqa: ARG001
+    mock_list: AsyncMock,
 ) -> None:
     ctx = request.getfixturevalue(ctx_name)
     r = client_as(ctx).get("/integrations")
@@ -127,3 +127,62 @@ def test_disconnect_unknown_integration_returns_404(
     )
     r = client_as(org_admin_ctx).delete("/integrations/linear")
     assert r.status_code == 404
+
+
+# ── POST /integrations/{provider}/sync ─────────────────────────────────────
+
+
+@pytest.fixture
+def mock_sqs_publish(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    mock = AsyncMock(return_value="msg-1")
+    monkeypatch.setattr(integrations_routes, "sqs_publish", mock)
+    return mock
+
+
+def test_sync_orgadmin_enqueues(
+    client_as: Callable,
+    org_admin_ctx: IntegrationAuthContext,
+    mock_sqs_publish: AsyncMock,
+) -> None:
+    r = client_as(org_admin_ctx).post("/integrations/github/sync")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["sync_type"] == "manual"
+    assert body["enqueued"] is True
+    assert "trace_id" in body
+    mock_sqs_publish.assert_called_once()
+    queue, payload = mock_sqs_publish.call_args.args
+    assert queue == "backfill_jobs"
+    assert payload["provider"] == "github"
+    assert payload["org_id"] == str(org_admin_ctx.org_id)
+    assert payload["sync_type"] == "manual"
+
+
+def test_sync_team_lead_allowed(
+    client_as: Callable,
+    team_lead_ctx: IntegrationAuthContext,
+    mock_sqs_publish: AsyncMock,
+) -> None:
+    r = client_as(team_lead_ctx).post("/integrations/linear/sync")
+    assert r.status_code == 200
+    mock_sqs_publish.assert_called_once()
+
+
+def test_sync_developer_forbidden(
+    client_as: Callable,
+    developer_ctx: IntegrationAuthContext,
+    mock_sqs_publish: AsyncMock,
+) -> None:
+    r = client_as(developer_ctx).post("/integrations/jira/sync")
+    assert r.status_code == 403
+    mock_sqs_publish.assert_not_called()
+
+
+def test_sync_unknown_provider_returns_404(
+    client_as: Callable,
+    org_admin_ctx: IntegrationAuthContext,
+    mock_sqs_publish: AsyncMock,
+) -> None:
+    r = client_as(org_admin_ctx).post("/integrations/bitbucket/sync")
+    assert r.status_code == 404
+    mock_sqs_publish.assert_not_called()

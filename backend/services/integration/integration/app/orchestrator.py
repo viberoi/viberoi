@@ -210,7 +210,7 @@ async def disconnect(*, org_id: UUID, provider: str) -> None:
             },
         )
         await adapter.revoke(connection)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning(
             "provider_revoke_failed",
             provider=provider,

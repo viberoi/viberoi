@@ -20,6 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,15 @@ class WebhookRegistration:
     # The HMAC secret we generated and gave the provider. Caller persists
     # via `store_token(webhook_secret=...)`.
     secret: str
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    """Outcome of a single sync run for one (org, provider)."""
+
+    tickets_upserted: int = 0
+    sprints_upserted: int = 0
+    errors: list[str] = field(default_factory=list)
 
 
 class ProviderError(Exception):
@@ -105,3 +115,23 @@ class ProviderAdapter(ABC):
     async def revoke(self, connection: ProviderConnection) -> None:
         """Optional clean-up on disconnect (delete webhooks, revoke token).
         Best-effort: a failed revoke shouldn't block local revocation."""
+
+    @abstractmethod
+    async def sync(
+        self,
+        connection: ProviderConnection,
+        *,
+        org_id: UUID,
+        since: datetime | None,
+    ) -> SyncResult:
+        """Pull tickets + sprints from the provider and upsert into Postgres.
+
+        `since` is the lower bound on `updated_at` for delta syncs. None
+        means "no lower bound" — sync.py passes `now - 90d` for the
+        initial sync.
+
+        Implementations write via `viberoi_shared.tickets.repository`
+        (upsert_ticket / upsert_sprint) inside an `org_scoped_session`.
+        Should be idempotent — re-running the same sync produces the
+        same DB state (upsert key is (org_id, system, external_id)).
+        """

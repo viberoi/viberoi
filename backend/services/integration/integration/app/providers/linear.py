@@ -24,6 +24,7 @@ import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
+from uuid import UUID
 
 import orjson
 
@@ -32,22 +33,26 @@ from integration.app.providers.base import (
     OAuthCallbackError,
     ProviderAdapter,
     ProviderConnection,
+    SyncResult,
     TokenRefreshError,
     WebhookRegistration,
     WebhookRegistrationError,
 )
+from viberoi_shared.db import org_scoped_session
 from viberoi_shared.logging import get_logger
+from viberoi_shared.tickets import upsert_sprint, upsert_ticket
 
 logger = get_logger(__name__)
 
 AUTHORIZE_URL = "https://linear.app/oauth/authorize"
 TOKEN_URL = "https://api.linear.app/oauth/token"  # noqa: S105
-REVOKE_URL = "https://api.linear.app/oauth/revoke"  # noqa: S105
+REVOKE_URL = "https://api.linear.app/oauth/revoke"
 GRAPHQL_URL = "https://api.linear.app/graphql"
 
 # Read-only over issues, cycles, projects, teams, users.
 DEFAULT_SCOPE = "read"
 WEBHOOK_RESOURCE_TYPES = ["Issue", "Cycle", "Project"]
+HTTP_ERROR_FLOOR = 400
 
 
 class LinearAdapter(ProviderAdapter):
@@ -110,7 +115,7 @@ class LinearAdapter(ProviderAdapter):
             },
             content=urlencode(body).encode("utf-8"),
         )
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_FLOOR:
             logger.warning(
                 "linear_token_exchange_failed",
                 grant_type=grant_type,
@@ -165,7 +170,7 @@ class LinearAdapter(ProviderAdapter):
             },
             content=orjson.dumps(body),
         )
-        if response.status_code >= 400:
+        if response.status_code >= HTTP_ERROR_FLOOR:
             raise TokenRefreshError(
                 f"Linear GraphQL returned {response.status_code}."
             )
@@ -214,6 +219,147 @@ class LinearAdapter(ProviderAdapter):
             provider_webhook_ids=[webhook_id], secret=secret
         )
 
+    # ── Sync ───────────────────────────────────────────────────────────────
+
+    async def sync(
+        self,
+        connection: ProviderConnection,
+        *,
+        org_id: UUID,
+        since: datetime | None,
+    ) -> SyncResult:
+        """V1: fetch active cycles + recently-updated issues via GraphQL.
+
+        - cycles → `sprints` (system="linear", external_id=cycle.id)
+        - issues → `tickets` (system="linear", external_id=issue.identifier
+          e.g. "ENG-42")
+        """
+        if since is None:
+            since = datetime.now(tz=UTC) - timedelta(days=90)
+        sprints = 0
+        tickets = 0
+        errors: list[str] = []
+
+        try:
+            sprints += await self._sync_cycles(connection, org_id)
+        except Exception as e:
+            errors.append(f"linear cycles: {e}")
+
+        try:
+            tickets += await self._sync_issues(connection, org_id, since)
+        except Exception as e:
+            errors.append(f"linear issues: {e}")
+
+        return SyncResult(
+            tickets_upserted=tickets, sprints_upserted=sprints, errors=errors
+        )
+
+    async def _sync_cycles(
+        self, connection: ProviderConnection, org_id: UUID
+    ) -> int:
+        query = """
+        query Cycles($first: Int!) {
+          cycles(first: $first) {
+            nodes {
+              id name number startsAt endsAt completedAt
+              team { id key }
+            }
+          }
+        }
+        """
+        result = await self.graphql(
+            connection.access_token, query, {"first": 100}
+        )
+        nodes = ((result.get("data") or {}).get("cycles") or {}).get("nodes", [])
+        count = 0
+        now = datetime.now(tz=UTC)
+        for node in nodes:
+            starts = _parse_linear_timestamp(node.get("startsAt"))
+            ends = _parse_linear_timestamp(node.get("endsAt"))
+            completed = _parse_linear_timestamp(node.get("completedAt"))
+            if completed:
+                state = "closed"
+            elif starts and starts <= now and (ends is None or ends >= now):
+                state = "active"
+            else:
+                state = "future"
+            team = node.get("team") or {}
+            async with org_scoped_session(org_id) as db:
+                await upsert_sprint(
+                    db,
+                    org_id=org_id,
+                    system="linear",
+                    external_id=node["id"],
+                    name=node.get("name") or f"Cycle {node.get('number', '?')}",
+                    state=state,
+                    started_at=starts,
+                    ended_at=ends,
+                    completed_at=completed,
+                    board_id=team.get("id"),
+                )
+            count += 1
+        return count
+
+    async def _sync_issues(
+        self,
+        connection: ProviderConnection,
+        org_id: UUID,
+        since: datetime,
+    ) -> int:
+        query = """
+        query Issues($filter: IssueFilter!, $first: Int!, $after: String) {
+          issues(filter: $filter, first: $first, after: $after) {
+            nodes {
+              identifier title createdAt completedAt
+              state { type }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+        """
+        cursor: str | None = None
+        count = 0
+        max_tickets = 500
+        while count < max_tickets:
+            variables: dict[str, object] = {
+                "filter": {"updatedAt": {"gte": since.isoformat()}},
+                "first": 100,
+            }
+            if cursor:
+                variables["after"] = cursor
+            result = await self.graphql(
+                connection.access_token, query, variables
+            )
+            issues_page = ((result.get("data") or {}).get("issues") or {})
+            for issue in issues_page.get("nodes", []):
+                created = _parse_linear_timestamp(issue.get("createdAt"))
+                if created is None:
+                    continue
+                completed = _parse_linear_timestamp(issue.get("completedAt"))
+                state_type = (issue.get("state") or {}).get("type", "unstarted")
+                status = "closed" if completed else state_type
+                async with org_scoped_session(org_id) as db:
+                    await upsert_ticket(
+                        db,
+                        org_id=org_id,
+                        system="linear",
+                        external_id=issue["identifier"],
+                        title=(issue.get("title") or "")[:500],
+                        status=status,
+                        created_at_external=created,
+                        closed_at_external=completed,
+                    )
+                count += 1
+                if count >= max_tickets:
+                    break
+            page_info = issues_page.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                break
+            cursor = page_info.get("endCursor")
+            if not cursor:
+                break
+        return count
+
     # ── Revoke ─────────────────────────────────────────────────────────────
 
     async def revoke(self, connection: ProviderConnection) -> None:
@@ -232,7 +378,7 @@ class LinearAdapter(ProviderAdapter):
                     }
                 ).encode("utf-8"),
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("linear_revoke_failed", error=str(e))
 
     async def delete_webhook(
@@ -246,7 +392,7 @@ class LinearAdapter(ProviderAdapter):
         """
         try:
             await self.graphql(connection.access_token, mutation, {"id": webhook_id})
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning(
                 "linear_webhook_delete_failed", webhook_id=webhook_id, error=str(e)
             )
@@ -258,3 +404,14 @@ def _epoch_to_dt(ts: float) -> datetime:
 
 def _now_epoch() -> float:
     return time.time()
+
+
+def _parse_linear_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(value).astimezone(UTC)
+    except ValueError:
+        return None

@@ -3,12 +3,10 @@ LocalStack KMS via shared fixtures)."""
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-
 from integration.app import orchestrator
 from integration.app.providers import registry
 from integration.app.providers.base import (
@@ -16,11 +14,12 @@ from integration.app.providers.base import (
     WebhookRegistration,
     WebhookRegistrationError,
 )
+from sqlalchemy import text
+
 from viberoi_shared.db import superuser_session
 from viberoi_shared.errors import NotFound
 from viberoi_shared.integrations.oauth_state import OAuthStateError
 from viberoi_shared.orgs.models import Developer, Org
-from sqlalchemy import text
 
 pytestmark = pytest.mark.integration
 
@@ -197,8 +196,8 @@ async def test_complete_connect_happy_path(
 
 async def test_complete_connect_with_bad_state_raises(
     org_and_dev: tuple[Org, Developer],
-    with_mocked_provider: MagicMock,  # noqa: ARG001
-    mock_sqs: AsyncMock,  # noqa: ARG001
+    with_mocked_provider: MagicMock,
+    mock_sqs: AsyncMock,
 ) -> None:
     with pytest.raises(OAuthStateError):
         await orchestrator.complete_connect(
@@ -212,7 +211,7 @@ async def test_complete_connect_with_bad_state_raises(
 async def test_complete_connect_provider_mismatch_raises(
     org_and_dev: tuple[Org, Developer],
     with_mocked_provider: MagicMock,
-    mock_sqs: AsyncMock,  # noqa: ARG001
+    mock_sqs: AsyncMock,
 ) -> None:
     """Callback hits a different provider than the one state was bound to."""
     org, dev = org_and_dev
@@ -236,7 +235,7 @@ async def test_complete_connect_provider_mismatch_raises(
 async def test_complete_connect_webhook_failure_still_persists_token(
     org_and_dev: tuple[Org, Developer],
     monkeypatch: pytest.MonkeyPatch,
-    mock_sqs: AsyncMock,  # noqa: ARG001
+    mock_sqs: AsyncMock,
 ) -> None:
     """Webhook registration failure leaves the integration in 'failed' state
     but does NOT roll back the token storage — user can re-attempt via /sync."""
@@ -269,7 +268,7 @@ async def test_complete_connect_webhook_failure_still_persists_token(
 
 async def test_disconnect_unknown_integration_raises(
     org_and_dev: tuple[Org, Developer],
-    with_mocked_provider: MagicMock,  # noqa: ARG001
+    with_mocked_provider: MagicMock,
 ) -> None:
     org, _ = org_and_dev
     with pytest.raises(NotFound):
@@ -279,7 +278,7 @@ async def test_disconnect_unknown_integration_raises(
 async def test_disconnect_revokes_locally_and_calls_provider(
     org_and_dev: tuple[Org, Developer],
     with_mocked_provider: MagicMock,
-    mock_sqs: AsyncMock,  # noqa: ARG001
+    mock_sqs: AsyncMock,
 ) -> None:
     org, dev = org_and_dev
 
@@ -312,7 +311,7 @@ async def test_disconnect_revokes_locally_and_calls_provider(
 async def test_list_integrations_returns_active_rows(
     org_and_dev: tuple[Org, Developer],
     with_mocked_provider: MagicMock,
-    mock_sqs: AsyncMock,  # noqa: ARG001
+    mock_sqs: AsyncMock,
 ) -> None:
     org, dev = org_and_dev
 

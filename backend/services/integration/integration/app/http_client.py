@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import httpx  # noqa: TID251 — only allowed inside this module + providers/
+import httpx
 
 from viberoi_shared.logging import get_logger
 

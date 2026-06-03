@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import jwt  # PyJWT
 import orjson
@@ -44,11 +45,14 @@ from integration.app.providers.base import (
     OAuthCallbackError,
     ProviderAdapter,
     ProviderConnection,
+    SyncResult,
     TokenRefreshError,
     WebhookRegistration,
     WebhookRegistrationError,
 )
+from viberoi_shared.db import org_scoped_session
 from viberoi_shared.logging import get_logger
+from viberoi_shared.tickets import upsert_ticket
 
 logger = get_logger(__name__)
 
@@ -57,6 +61,7 @@ ACCEPT = "application/vnd.github+json"
 GITHUB_API_BASE = "https://api.github.com"
 JWT_LIFETIME_SECONDS = 540  # 9 minutes — under the 10-minute cap
 JWT_BACKDATE_SECONDS = 60  # 1 minute, per docs (clock-drift tolerance)
+HTTP_ERROR_FLOOR = 400
 
 
 class GitHubAppAdapter(ProviderAdapter):
@@ -238,6 +243,74 @@ class GitHubAppAdapter(ProviderAdapter):
             page += 1
         return repos
 
+    # ── Sync ────────────────────────────────────────────────────────────────
+
+    async def sync(
+        self,
+        connection: ProviderConnection,
+        *,
+        org_id: UUID,
+        since: datetime | None,
+    ) -> SyncResult:
+        """V1 minimal: fetch one page of issues per installation repo and
+        upsert as tickets. Pagination + full backfill is a follow-up.
+
+        - external_id format: `{owner}/{repo}#{number}`
+        - system: `github_issues`
+        - status: `closed` if issue.closed_at else `open`
+        """
+        if since is None:
+            since = datetime.now(tz=UTC) - timedelta(days=90)
+
+        repos = await self._list_installation_repos(connection.access_token)
+        tickets = 0
+        errors: list[str] = []
+
+        for repo in repos:
+            owner = repo["owner"]["login"]
+            name = repo["name"]
+            try:
+                response = await http_request(
+                    "GET",
+                    f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues",
+                    headers={
+                        "Authorization": f"Bearer {connection.access_token}",
+                        "Accept": ACCEPT,
+                        "X-GitHub-Api-Version": API_VERSION,
+                    },
+                    params={
+                        "state": "all",
+                        "since": since.isoformat(),
+                        "per_page": 100,
+                    },
+                )
+                if response.status_code >= 400:
+                    errors.append(f"{owner}/{name}: HTTP {response.status_code}")
+                    continue
+                for issue in response.json():
+                    if issue.get("pull_request"):
+                        # GitHub returns PRs alongside issues; skip them
+                        # (PR data lands in tickets.pr_file_paths via webhook).
+                        continue
+                    closed_at = _parse_github_timestamp(issue.get("closed_at"))
+                    async with org_scoped_session(org_id) as db:
+                        await upsert_ticket(
+                            db,
+                            org_id=org_id,
+                            system="github_issues",
+                            external_id=f"{owner}/{name}#{issue['number']}",
+                            title=issue["title"],
+                            status="closed" if closed_at else "open",
+                            created_at_external=_parse_github_timestamp(
+                                issue["created_at"]
+                            ),
+                            closed_at_external=closed_at,
+                        )
+                    tickets += 1
+            except Exception as e:
+                errors.append(f"{owner}/{name}: {e}")
+        return SyncResult(tickets_upserted=tickets, errors=errors)
+
     # ── Revoke ──────────────────────────────────────────────────────────────
 
     async def revoke(self, connection: ProviderConnection) -> None:
@@ -253,7 +326,7 @@ class GitHubAppAdapter(ProviderAdapter):
                     "X-GitHub-Api-Version": API_VERSION,
                 },
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("github_revoke_failed", error=str(e))
 
 

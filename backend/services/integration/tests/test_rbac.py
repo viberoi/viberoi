@@ -8,8 +8,8 @@ from collections.abc import Callable
 
 import pytest
 from fastapi import FastAPI
+from integration.app.auth import IntegrationAuthContext, require_role
 
-from integration.app.auth import IntegrationAuthContext, authenticate, require_role
 from viberoi_shared.types.enums import Role
 
 

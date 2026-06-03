@@ -42,7 +42,7 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"**/tests/**" = ["ANN", "S101", "PLR2004", "ARG"]
+"**/tests/**" = ["ANN", "S101", "S105", "S106", "PLR2004", "ARG"]
 "**/conftest.py" = ["ANN", "ARG"]
 "**/__init__.py" = ["F401"]  # re-export pattern
 

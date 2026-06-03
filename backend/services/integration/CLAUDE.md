@@ -63,7 +63,9 @@ Lazy: when an outbound call is about to be made, check `expires_at <= now + 60s`
 
 This service is being built incrementally in sub-batches. Current state:
 - C1: skeleton + health + auth dependency + OAuth state shared module
-- C2 (planned): full Cognito + HTTP client + circuit breaker + provider base
+- C2: full Cognito stub + HTTP client + circuit breaker + provider base
 - C3: GitHub / Jira / Linear provider implementations
 - C4: orchestrator + OAuth routes + list/disconnect + migration 0005
-- C5: webhook registration + sync routines + consumer + commit
+- **C5 (done):** per-provider `sync()` methods, dispatcher (`app/sync.py`),
+  SQS backfill consumer (`app/consumer.py` + `consumer_main.py`),
+  `POST /integrations/{provider}/sync` route, dual-process `entrypoint.sh`.

@@ -5,13 +5,11 @@ Confirms HTTP shape, RBAC, error redirect paths.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 from unittest.mock import AsyncMock
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
-from fastapi import FastAPI
-
 from integration.api import oauth as oauth_routes
 from integration.app.auth import IntegrationAuthContext
 from integration.app.orchestrator import (
@@ -19,6 +17,7 @@ from integration.app.orchestrator import (
     InitiateResult,
 )
 from integration.app.providers.base import OAuthCallbackError
+
 from viberoi_shared.integrations.oauth_state import OAuthStateError
 
 
@@ -67,7 +66,7 @@ def test_connect_orgadmin_gets_authorize_url(
 def test_connect_unknown_provider_404(
     client_as: Callable,
     org_admin_ctx: IntegrationAuthContext,
-    mock_initiate: AsyncMock,  # noqa: ARG001
+    mock_initiate: AsyncMock,
 ) -> None:
     r = client_as(org_admin_ctx).post("/integrations/bitbucket/connect")
     assert r.status_code == 404
@@ -78,14 +77,14 @@ def test_connect_non_admin_forbidden(
     client_as: Callable,
     ctx_name: str,
     request: pytest.FixtureRequest,
-    mock_initiate: AsyncMock,  # noqa: ARG001
+    mock_initiate: AsyncMock,
 ) -> None:
     ctx = request.getfixturevalue(ctx_name)
     r = client_as(ctx).post("/integrations/linear/connect")
     assert r.status_code == 403
 
 
-def test_connect_unauthenticated_401(client, mock_initiate: AsyncMock) -> None:  # noqa: ARG001
+def test_connect_unauthenticated_401(client, mock_initiate: AsyncMock) -> None:
     """No auth header → real authenticate dep runs → CognitoNotImplemented
     or Unauthorized → 401."""
     r = client.post("/integrations/github/connect")
@@ -114,7 +113,7 @@ def test_callback_success_redirects_to_frontend(
 
 def test_callback_unknown_provider_redirects_with_error(
     client,
-    mock_complete: AsyncMock,  # noqa: ARG001
+    mock_complete: AsyncMock,
 ) -> None:
     r = client.get(
         "/integrations/bitbucket/callback?code=x", follow_redirects=False

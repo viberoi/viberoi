@@ -5,9 +5,9 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from integration.app.auth import IntegrationAuthContext, authenticate
 from integration.main import create_app
+
 from viberoi_shared.types.enums import Role
 
 

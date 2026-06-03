@@ -6,7 +6,6 @@ import httpx
 import orjson
 import pytest
 import respx
-
 from integration.app import http_client
 from integration.app.providers.base import (
     OAuthCallbackError,
@@ -19,7 +18,7 @@ from integration.app.providers.linear import LinearAdapter
 
 @pytest.fixture
 def adapter() -> LinearAdapter:
-    return LinearAdapter(client_id="cid", client_secret="csec")  # noqa: S106
+    return LinearAdapter(client_id="cid", client_secret="csec")
 
 
 @pytest.fixture(autouse=True)
