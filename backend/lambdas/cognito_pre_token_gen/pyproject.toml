@@ -1,0 +1,15 @@
+[project]
+name = "viberoi-cognito-pre-token-gen"
+version = "0.1.0"
+description = "Cognito PreTokenGeneration v2.0 Lambda — injects custom:org_id / developer_id / role / team_id into access tokens."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "viberoi-shared",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cognito_pre_token_gen"]

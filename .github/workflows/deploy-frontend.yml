@@ -1,0 +1,111 @@
+# GitHub Actions — build frontend + deploy to S3/CloudFront.
+#
+# Triggers on push to main when frontend/ changes. Steps:
+#   1. npm install + npm run build (Vite outputs dist/)
+#   2. Sync dist/ to the env's frontend S3 bucket. Static assets get
+#      a long cache header; index.html stays short so HTML changes
+#      land immediately.
+#   3. Create a CloudFront invalidation for "/*" so old HTML stops
+#      serving from edge caches.
+#
+# Bucket name + distribution id are sourced from Terraform via the
+# AWS CLI (looking up by tag) — keeps the workflow decoupled from the
+# state file.
+
+name: deploy-frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ROLE_ARN: arn:aws:iam::876611282878:role/viberoi-github-actions-terraform
+  FRONTEND_BUCKET: viberoi-dev-frontend-876611282878 # matches modules/s3 naming
+  NODE_VERSION: "20"
+
+jobs:
+  deploy:
+    name: build + deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: gha-deploy-frontend-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Hash-named assets — long cache (1 year, immutable).
+      - name: Sync hashed assets
+        run: |
+          aws s3 sync dist/ s3://${{ env.FRONTEND_BUCKET }}/ \
+            --exclude "*" \
+            --include "assets/*" \
+            --cache-control "public,max-age=31536000,immutable" \
+            --no-progress
+
+      # Everything else (index.html, favicons, etc.) — no cache. HTML
+      # must always reflect the latest deploy.
+      - name: Sync top-level files
+        run: |
+          aws s3 sync dist/ s3://${{ env.FRONTEND_BUCKET }}/ \
+            --exclude "assets/*" \
+            --cache-control "public,max-age=0,must-revalidate" \
+            --delete \
+            --no-progress
+
+      - name: Find CloudFront distribution id
+        id: cf
+        run: |
+          # Distribution carries our project + env tags via Terraform.
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items, 'app') || Comment=='viberoi-dev — frontend'].Id | [0]" \
+            --output text \
+            --no-cli-pager)
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            echo "Could not find a CloudFront distribution by tag/comment. Set DIST_ID manually." >&2
+            exit 1
+          fi
+          echo "id=$DIST_ID" >> "$GITHUB_OUTPUT"
+          echo "Found CloudFront distribution: $DIST_ID"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.cf.outputs.id }} \
+            --paths "/*" \
+            --no-cli-pager > /dev/null
+          echo "CloudFront invalidation submitted for /*"

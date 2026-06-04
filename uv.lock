@@ -7,6 +7,7 @@ members = [
     "viberoi",
     "viberoi-api",
     "viberoi-cognito-postconfirm",
+    "viberoi-cognito-pre-token-gen",
     "viberoi-cognito-presignup",
     "viberoi-ingest",
     "viberoi-integration",
@@ -1200,6 +1201,17 @@ requires-dist = [
 name = "viberoi-cognito-postconfirm"
 version = "0.1.0"
 source = { editable = "backend/lambdas/cognito_postconfirm" }
+dependencies = [
+    { name = "viberoi-shared" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "viberoi-shared", editable = "backend/packages/shared" }]
+
+[[package]]
+name = "viberoi-cognito-pre-token-gen"
+version = "0.1.0"
+source = { editable = "backend/lambdas/cognito_pre_token_gen" }
 dependencies = [
     { name = "viberoi-shared" },
 ]

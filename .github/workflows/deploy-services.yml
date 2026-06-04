@@ -1,0 +1,226 @@
+# GitHub Actions — build + deploy services and Lambdas to AWS.
+#
+# Triggers on push to `main` when the relevant code path changes.
+# Matrix over (5 ECS services + 4 container Lambdas). Per item:
+#   1. Login to ECR via OIDC role.
+#   2. docker build with the service's Dockerfile (from repo root).
+#   3. docker push with :<commit-sha> + :latest tags.
+#   4. ECS:    `aws ecs update-service --force-new-deployment` to
+#              pull the new :latest. Service stays at its current
+#              desired_count; rolling deploy.
+#      Lambda: `aws lambda update-function-code --image-uri :<commit-sha>`
+#              to flip to the new image.
+#
+# Path filters keep the matrix small per commit — only services whose
+# source actually changed get rebuilt. Shared library changes rebuild
+# everything.
+#
+# No long-lived AWS creds; uses the OIDC role from 6F. That role
+# already has AdministratorAccess for dev.
+
+name: deploy-services
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-services.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Force-deploy a specific target. Leave empty to use path-change detection."
+        type: choice
+        options:
+          - "(use path detection)"
+          - ingest
+          - worker
+          - integration
+          - api
+          - notification
+          - webhook-receiver
+          - cognito-presignup
+          - cognito-postconfirm
+          - cognito-pre-token-gen
+          - all
+        default: "(use path detection)"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "876611282878"
+  AWS_ROLE_ARN: arn:aws:iam::876611282878:role/viberoi-github-actions-terraform
+  ECS_CLUSTER: viberoi-dev-ecs
+  ECR_REGISTRY: 876611282878.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  # ── Detect what changed so we only rebuild affected services ────────────
+  detect:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      shared_changed: ${{ steps.filter.outputs.shared }}
+      ingest: ${{ steps.filter.outputs.ingest }}
+      worker: ${{ steps.filter.outputs.worker }}
+      integration: ${{ steps.filter.outputs.integration }}
+      api: ${{ steps.filter.outputs.api }}
+      notification: ${{ steps.filter.outputs.notification }}
+      webhook_receiver: ${{ steps.filter.outputs.webhook_receiver }}
+      cognito_presignup: ${{ steps.filter.outputs.cognito_presignup }}
+      cognito_postconfirm: ${{ steps.filter.outputs.cognito_postconfirm }}
+      cognito_pre_token_gen: ${{ steps.filter.outputs.cognito_pre_token_gen }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            shared:
+              - 'backend/packages/shared/**'
+            ingest:
+              - 'backend/services/ingest/**'
+            worker:
+              - 'backend/services/worker/**'
+            integration:
+              - 'backend/services/integration/**'
+            api:
+              - 'backend/services/api/**'
+            notification:
+              - 'backend/services/notification/**'
+            webhook_receiver:
+              - 'backend/lambdas/webhook_receiver/**'
+            cognito_presignup:
+              - 'backend/lambdas/cognito_presignup/**'
+            cognito_postconfirm:
+              - 'backend/lambdas/cognito_postconfirm/**'
+            cognito_pre_token_gen:
+              - 'backend/lambdas/cognito_pre_token_gen/**'
+
+  # ── ECS services ───────────────────────────────────────────────────────
+  deploy_ecs:
+    name: deploy ${{ matrix.service }}
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: ingest,       dockerfile: backend/services/ingest/Dockerfile,       ecr_repo: viberoi-dev-ingest,       ecs_service: viberoi-dev-ingest,       changed_key: ingest }
+          - { service: worker,       dockerfile: backend/services/worker/Dockerfile,       ecr_repo: viberoi-dev-worker,       ecs_service: viberoi-dev-worker,       changed_key: worker }
+          - { service: integration,  dockerfile: backend/services/integration/Dockerfile,  ecr_repo: viberoi-dev-integration,  ecs_service: viberoi-dev-integration,  changed_key: integration }
+          - { service: api,          dockerfile: backend/services/api/Dockerfile,          ecr_repo: viberoi-dev-api,          ecs_service: viberoi-dev-api,          changed_key: api }
+          - { service: notification, dockerfile: backend/services/notification/Dockerfile, ecr_repo: viberoi-dev-notification, ecs_service: viberoi-dev-notification, changed_key: notification }
+    if: |
+      needs.detect.outputs.shared_changed == 'true' ||
+      needs.detect.outputs[matrix.changed_key] == 'true' ||
+      inputs.target == matrix.service ||
+      inputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: gha-deploy-${{ matrix.service }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          REPO_URI=${{ env.ECR_REGISTRY }}/${{ matrix.ecr_repo }}
+          docker build \
+            -f ${{ matrix.dockerfile }} \
+            -t $REPO_URI:$IMAGE_TAG \
+            -t $REPO_URI:latest \
+            .
+          docker push $REPO_URI:$IMAGE_TAG
+          docker push $REPO_URI:latest
+
+      - name: Force ECS service redeploy
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ matrix.ecs_service }} \
+            --force-new-deployment \
+            --no-cli-pager > /dev/null
+          echo "Triggered new deployment for ${{ matrix.ecs_service }}"
+
+      - name: Wait for service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ matrix.ecs_service }}
+          echo "Service ${{ matrix.ecs_service }} is stable"
+
+  # ── Container Lambdas ──────────────────────────────────────────────────
+  deploy_lambda:
+    name: deploy ${{ matrix.lambda }}
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { lambda: webhook-receiver,      dockerfile: backend/lambdas/webhook_receiver/Dockerfile,      ecr_repo: viberoi-dev-webhook-receiver,      function: viberoi-dev-webhook-receiver,      changed_key: webhook_receiver }
+          - { lambda: cognito-presignup,     dockerfile: backend/lambdas/cognito_presignup/Dockerfile,     ecr_repo: viberoi-dev-cognito-presignup,     function: viberoi-dev-cognito-presignup,     changed_key: cognito_presignup }
+          - { lambda: cognito-postconfirm,   dockerfile: backend/lambdas/cognito_postconfirm/Dockerfile,   ecr_repo: viberoi-dev-cognito-postconfirm,   function: viberoi-dev-cognito-postconfirm,   changed_key: cognito_postconfirm }
+          - { lambda: cognito-pre-token-gen, dockerfile: backend/lambdas/cognito_pre_token_gen/Dockerfile, ecr_repo: viberoi-dev-cognito-pre-token-gen, function: viberoi-dev-cognito-pre-token-gen, changed_key: cognito_pre_token_gen }
+    if: |
+      needs.detect.outputs.shared_changed == 'true' ||
+      needs.detect.outputs[matrix.changed_key] == 'true' ||
+      inputs.target == matrix.lambda ||
+      inputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: gha-deploy-${{ matrix.lambda }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          REPO_URI=${{ env.ECR_REGISTRY }}/${{ matrix.ecr_repo }}
+          docker build \
+            -f ${{ matrix.dockerfile }} \
+            -t $REPO_URI:$IMAGE_TAG \
+            -t $REPO_URI:latest \
+            .
+          docker push $REPO_URI:$IMAGE_TAG
+          docker push $REPO_URI:latest
+
+      - name: Update Lambda function code
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          REPO_URI=${{ env.ECR_REGISTRY }}/${{ matrix.ecr_repo }}
+          aws lambda update-function-code \
+            --function-name ${{ matrix.function }} \
+            --image-uri $REPO_URI:$IMAGE_TAG \
+            --no-cli-pager > /dev/null
+
+          # Wait for the function to finish updating before we exit.
+          aws lambda wait function-updated \
+            --function-name ${{ matrix.function }}
+
+          echo "Lambda ${{ matrix.function }} updated to $IMAGE_TAG"
