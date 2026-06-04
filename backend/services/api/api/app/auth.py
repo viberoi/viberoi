@@ -32,10 +32,13 @@ from viberoi_shared.cognito import (
     CognitoClaims,
     CognitoVerificationError,
     verify_jwt,
+    verify_jwt_basic,
 )
 from viberoi_shared.config import Env, get_settings
+from viberoi_shared.db import superuser_session
 from viberoi_shared.errors import Forbidden, Unauthorized
 from viberoi_shared.logging import bind_request_context, get_logger
+from viberoi_shared.orgs import get_developer_by_cognito_sub
 from viberoi_shared.types.enums import Role
 
 logger = get_logger(__name__)
@@ -90,24 +93,24 @@ def _try_dev_passthrough(request: Request) -> ApiAuthContext | None:
 async def authenticate(request: Request) -> ApiAuthContext:
     """Parse + verify the Cognito access token; build the auth context.
 
-    Verification failure → `Unauthorized` (no verifier detail leaked).
-    In `dev` env, X-Dev-* headers short-circuit the JWT path.
+    Three-step fallback:
+      1. Dev passthrough (X-Dev-* headers, gated on env=dev).
+      2. `verify_jwt` (full path) — requires `custom:org_id`/`role` claims
+         set by the PreTokenGeneration Lambda. Production default.
+      3. `verify_jwt_basic` + DB lookup by `sub` — used when the Lambda
+         is not yet deployed (early dev). Looks up org/role from the
+         developers table via the sub. Equivalent security: the JWT is
+         still signature-verified; we just source authorization data
+         from the DB rather than from token claims.
+
+    Verification failure on every path → `Unauthorized` (no detail leak).
     """
     dev_ctx = _try_dev_passthrough(request)
     if dev_ctx is not None:
         ctx = dev_ctx
     else:
         token = _parse_bearer(request)
-        try:
-            claims: CognitoClaims = await verify_jwt(token)
-        except CognitoVerificationError:
-            raise Unauthorized from None
-        ctx = ApiAuthContext(
-            developer_id=claims.developer_id,
-            org_id=claims.org_id,
-            role=claims.role,
-            team_id=claims.team_id,
-        )
+        ctx = await _resolve_jwt_ctx(token)
 
     bind_request_context(
         request_id=getattr(request.state, "request_id", "unknown"),
@@ -116,6 +119,49 @@ async def authenticate(request: Request) -> ApiAuthContext:
     )
     logger.info("api_authenticated", role=ctx.role.value)
     return ctx
+
+
+async def _resolve_jwt_ctx(token: str) -> ApiAuthContext:
+    """Try the claims-rich path first; fall back to sub→DB lookup."""
+    try:
+        claims: CognitoClaims = await verify_jwt(token)
+        return ApiAuthContext(
+            developer_id=claims.developer_id,
+            org_id=claims.org_id,
+            role=claims.role,
+            team_id=claims.team_id,
+        )
+    except CognitoVerificationError:
+        # Custom attrs missing — likely the PreTokenGeneration Lambda
+        # isn't deployed yet. Fall through to the DB-lookup path.
+        pass
+
+    try:
+        raw = await verify_jwt_basic(token)
+    except CognitoVerificationError:
+        raise Unauthorized from None
+
+    sub = raw["sub"]
+    # Cross-org lookup — by definition we don't yet know which org the
+    # caller belongs to. superuser_session bypasses RLS for this one
+    # bootstrap query; the request switches to org-scoped sessions after.
+    async with superuser_session() as db:
+        dev = await get_developer_by_cognito_sub(db, sub)
+    if dev is None:
+        logger.warning("cognito_sub_unknown", sub_prefix=sub[:8])
+        raise Unauthorized
+
+    try:
+        role = Role(dev.role)
+    except ValueError:
+        raise Unauthorized from None
+
+    return ApiAuthContext(
+        developer_id=dev.id,
+        org_id=dev.org_id,
+        role=role,
+        team_id=dev.team_id,
+    )
 
 
 AuthRequired = Annotated[ApiAuthContext, Depends(authenticate)]

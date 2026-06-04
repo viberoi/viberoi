@@ -62,10 +62,16 @@ type Tokens struct {
 
 // rawTurn is the minimal subset of the on-wire shape we depend on.
 // Both session.jsonl and agent-*.jsonl use this shape.
+//
+// Newer Claude Code CLI builds emit `sessionId` (camelCase) at the top
+// level; older Desktop builds emit `session_id`. Accept either —
+// whichever is set first wins. Inner `message.usage.*` is still
+// snake_case in both (it's the Anthropic API shape).
 type rawTurn struct {
-	Type      string    `json:"type"`
-	SessionID string    `json:"session_id"`
-	Timestamp time.Time `json:"timestamp"`
+	Type           string    `json:"type"`
+	SessionID      string    `json:"session_id"`
+	SessionIDCamel string    `json:"sessionId"`
+	Timestamp      time.Time `json:"timestamp"`
 	Message   *struct {
 		Role  string `json:"role"`
 		Model string `json:"model"`
@@ -155,8 +161,12 @@ func readMain(r io.Reader) (*FileSession, error) {
 			// One malformed line shouldn't kill the whole session.
 			continue
 		}
-		if out.SessionID == "" && t.SessionID != "" {
-			out.SessionID = t.SessionID
+		sid := t.SessionID
+		if sid == "" {
+			sid = t.SessionIDCamel
+		}
+		if out.SessionID == "" && sid != "" {
+			out.SessionID = sid
 		}
 		if !t.Timestamp.IsZero() {
 			if out.StartedAt.IsZero() || t.Timestamp.Before(out.StartedAt) {

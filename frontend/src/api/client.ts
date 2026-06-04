@@ -7,7 +7,9 @@
  * of this module won't need to change.
  */
 
-const STORAGE_KEY = "viberoi.dev_user";
+import { readSession } from "../auth/cognito";
+
+const DEV_STORAGE_KEY = "viberoi.dev_user";
 
 interface DevUser {
   email: string;
@@ -17,9 +19,9 @@ interface DevUser {
   teamId: string | null;
 }
 
-function readUser(): DevUser | null {
+function readDevUser(): DevUser | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(DEV_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as DevUser) : null;
   } catch {
     return null;
@@ -40,16 +42,22 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const user = readUser();
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string>),
   };
-  if (user) {
-    headers["X-Dev-Developer-Id"] = user.developerId;
-    headers["X-Dev-Org-Id"] = user.orgId;
-    headers["X-Dev-Role"] = user.role;
-    if (user.teamId) headers["X-Dev-Team-Id"] = user.teamId;
+  // Prefer Cognito Bearer when present; fall back to X-Dev-* headers.
+  const session = readSession();
+  if (session) {
+    headers["Authorization"] = `Bearer ${session.accessToken}`;
+  } else {
+    const user = readDevUser();
+    if (user) {
+      headers["X-Dev-Developer-Id"] = user.developerId;
+      headers["X-Dev-Org-Id"] = user.orgId;
+      headers["X-Dev-Role"] = user.role;
+      if (user.teamId) headers["X-Dev-Team-Id"] = user.teamId;
+    }
   }
 
   const response = await fetch(`/api${path}`, { ...init, headers });

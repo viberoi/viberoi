@@ -10,6 +10,7 @@ Per-service settings extend `SharedSettings` with their own fields.
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path as _Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,8 +25,12 @@ class Env(StrEnum):
 class SharedSettings(BaseSettings):
     """Base settings every service inherits from."""
 
+    # Resolve `.env.local` to the repo root (this file lives at
+    # backend/packages/shared/viberoi_shared/config/settings.py — six parents
+    # up). Without this, pydantic looks CWD-relative and services started from
+    # subdirectories silently miss the LocalStack endpoint override.
     model_config = SettingsConfigDict(
-        env_file=".env.local",
+        env_file=str(_Path(__file__).resolve().parents[5] / ".env.local"),
         env_file_encoding="utf-8",
         env_prefix="VIBEROI_",
         extra="ignore",

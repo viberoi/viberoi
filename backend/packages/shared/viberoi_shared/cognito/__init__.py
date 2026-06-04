@@ -15,6 +15,7 @@ from viberoi_shared.cognito.verify import (
     CognitoVerificationError,
     reset_jwks_cache,
     verify_jwt,
+    verify_jwt_basic,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "CognitoVerificationError",
     "reset_jwks_cache",
     "verify_jwt",
+    "verify_jwt_basic",
 ]

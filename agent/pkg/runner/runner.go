@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/viberoi/viberoi/agent/pkg/config"
@@ -435,10 +436,43 @@ func (r *Runner) assembleSession(ctx context.Context, in sessionInputs) *schema.
 	}
 }
 
-// discoverCLISessionFiles walks the Claude Code CLI sessions root for
-// `session.jsonl`. Missing root → empty slice, no error.
+// discoverCLISessionFiles walks the Claude Code CLI sessions root.
+// Accepts two layouts:
+//   - Desktop: <root>/<account>/<group>/<id>/session.jsonl
+//   - CLI:     <root>/<projectSlug>/<sessionId>.jsonl
+//
+// Skips any `subagents/` subtree (those are folded into their parent
+// session by the reader) and `audit.jsonl` files (AGENT MODE — handled
+// by the sibling package). Missing root → empty slice, no error.
 func discoverCLISessionFiles(root string) ([]string, error) {
-	return walkForName(root, "session.jsonl")
+	if _, err := os.Stat(root); errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == "subagents" {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if name == "session.jsonl" {
+			out = append(out, path)
+			return nil
+		}
+		if strings.HasSuffix(name, ".jsonl") && name != "audit.jsonl" {
+			out = append(out, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // discoverAgentModeAuditFiles walks the AGENT MODE sessions root for

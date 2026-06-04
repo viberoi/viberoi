@@ -9,6 +9,7 @@ import { SessionDetail } from "./pages/SessionDetail";
 import { Sprints } from "./pages/Sprints";
 import { SprintDetail } from "./pages/SprintDetail";
 import { TicketDetail } from "./pages/TicketDetail";
+import { AuthCallback } from "./pages/AuthCallback";
 import { Settings } from "./pages/Settings";
 import { Profile } from "./pages/settings/Profile";
 import { Integrations } from "./pages/settings/Integrations";
@@ -24,6 +25,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         element={
           <RequireAuth>

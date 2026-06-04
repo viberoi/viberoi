@@ -152,6 +152,39 @@ async def verify_jwt(token: str) -> CognitoClaims:
     return _parse_claims(raw)
 
 
+async def verify_jwt_basic(token: str) -> dict[str, Any]:
+    """Signature-verify an access token; return the raw claim dict.
+
+    Use when the PreTokenGeneration lambda is NOT deployed (early-stage
+    dev): the token has `sub` + standard claims but no `custom:org_id`
+    etc. The caller is expected to look up the developer by `sub` in the
+    DB and source org_id/role from there.
+
+    Same auth guarantees as `verify_jwt` for the cryptographic + issuer
+    checks; only the custom-attribute requirement is relaxed.
+    """
+    settings = get_settings()
+    try:
+        signing_key = _resolve_signing_key(token)
+        raw = jwt.decode(
+            token,
+            signing_key,
+            algorithms=["RS256"],
+            issuer=_issuer(),
+            leeway=settings.cognito_jwt_leeway_s,
+            options={"require": ["exp", "iat", "iss", "sub", "token_use"]},
+        )
+    except jwt.PyJWTError as e:
+        logger.warning("cognito_jwt_invalid", error_type=type(e).__name__)
+        raise CognitoVerificationError("Invalid Cognito JWT.") from e
+
+    if raw.get("token_use") != EXPECTED_TOKEN_USE:
+        raise CognitoVerificationError("Wrong token_use; expected access token.")
+    if raw.get("client_id") != settings.cognito_app_client_id:
+        raise CognitoVerificationError("Token client_id does not match.")
+    return raw
+
+
 def _resolve_signing_key(token: str) -> Any:
     """Fetch the signing key for the token's `kid`. Refreshes JWKS once
     if the `kid` isn't in the cached set (handles key rotation)."""

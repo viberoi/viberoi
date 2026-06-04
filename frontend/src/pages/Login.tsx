@@ -1,24 +1,20 @@
 /**
- * Dev-mode login.
- *
- * Picks from a few hardcoded users so we can exercise each RBAC bucket
- * without provisioning Cognito. The users mirror what the seed script
- * (`scripts/seed-dev-data.py`) inserts so the API has matching rows.
- *
- * When real Cognito lands this entire file becomes the OAuth callback
- * handler; the rest of the app (which reads `useAuth().user`) doesn't
- * change.
+ * Login — two paths:
+ *   - "Sign in with Cognito" → Hosted UI (signup, signin, MFA, reset)
+ *   - "Dev mode" expander → hardcoded user picker (local testing only)
  */
 
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Zap } from "lucide-react";
 
-import { type DevUser, type Role, useAuth } from "../auth/AuthContext";
+import { type AuthUser, type Role, useAuth } from "../auth/AuthContext";
+import { cognitoConfigured, startLogin } from "../auth/cognito";
 
 const DEV_ORG_ID = "00000000-0000-0000-0000-000000000001";
 const DEV_TEAM_ID = "00000000-0000-0000-0000-000000000010";
 
-const DEV_USERS: DevUser[] = [
+const DEV_USERS: Omit<AuthUser, "source">[] = [
   {
     email: "admin@acme.test",
     developerId: "00000000-0000-0000-0000-000000000101",
@@ -43,8 +39,10 @@ const DEV_USERS: DevUser[] = [
 ];
 
 export function Login() {
-  const { setUser } = useAuth();
+  const { setDevUser } = useAuth();
   const navigate = useNavigate();
+  const [devOpen, setDevOpen] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-viberoi-bg">
@@ -56,36 +54,61 @@ export function Login() {
           <span className="font-ui font-bold text-lg tracking-tight">
             VibeROI
           </span>
-          <span className="ml-auto text-[10px] uppercase tracking-widest bg-white/5 text-viberoi-sub px-2 py-1 rounded">
-            dev
-          </span>
         </div>
-        <div className="font-ui text-xl font-bold mb-1">Pick a dev user</div>
+        <div className="font-ui text-xl font-bold mb-1">Sign in</div>
         <div className="text-sm text-viberoi-sub mb-6">
-          Cognito hosted UI replaces this in Slice 6.
+          Privacy-first AI engineering ROI.
         </div>
-        <ul className="space-y-2">
-          {DEV_USERS.map((u) => (
-            <li key={u.email}>
-              <button
-                onClick={() => {
-                  setUser(u);
-                  navigate("/dashboard");
-                }}
-                className="w-full text-left flex items-center justify-between gap-2 px-4 py-3 rounded-md bg-viberoi-surface hover:bg-white/5 border border-transparent hover:border-viberoi-accent/30 transition-colors"
-              >
-                <span>
-                  <div className="text-sm">{u.email}</div>
-                  <div className="text-[11px] uppercase tracking-wider text-viberoi-sub">
-                    {u.role}
-                    {u.teamId ? " · team-A" : ""}
-                  </div>
-                </span>
-                <span className="text-viberoi-accent text-xs">Sign in →</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+
+        <button
+          onClick={() => {
+            setSigningIn(true);
+            void startLogin().catch((e: Error) => {
+              setSigningIn(false);
+              alert(e.message);
+            });
+          }}
+          disabled={!cognitoConfigured || signingIn}
+          className="w-full px-4 py-3 rounded-md bg-viberoi-accent text-black font-semibold hover:bg-viberoi-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {signingIn ? "Redirecting…" : "Sign in / Sign up"}
+        </button>
+        {!cognitoConfigured && (
+          <div className="mt-2 text-xs text-red-300">
+            Cognito env vars not set — see frontend/.env
+          </div>
+        )}
+
+        <button
+          onClick={() => setDevOpen(!devOpen)}
+          className="mt-6 w-full flex items-center gap-1 text-xs uppercase tracking-wider text-viberoi-sub hover:text-viberoi-text"
+        >
+          {devOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Dev mode (local only)
+        </button>
+        {devOpen && (
+          <ul className="space-y-2 mt-3">
+            {DEV_USERS.map((u) => (
+              <li key={u.email}>
+                <button
+                  onClick={() => {
+                    setDevUser(u);
+                    navigate("/dashboard");
+                  }}
+                  className="w-full text-left flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-viberoi-surface hover:bg-white/5 border border-transparent hover:border-viberoi-accent/30 transition-colors text-sm"
+                >
+                  <span>
+                    <div>{u.email}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-viberoi-sub">
+                      {u.role}
+                    </div>
+                  </span>
+                  <span className="text-viberoi-accent text-xs">→</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
