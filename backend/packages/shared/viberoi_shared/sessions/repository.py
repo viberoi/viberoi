@@ -179,6 +179,34 @@ def _decode_cursor(cursor: str) -> tuple[datetime, UUID]:
         raise ValidationFailed("Invalid pagination cursor.") from e
 
 
+async def list_sessions_for_ticket(
+    db: AsyncSession,
+    *,
+    org_uuid: UUID,
+    ticket_external_id: str,
+    limit: int = 100,
+) -> list[SessionRow]:
+    """All sessions attributed (via branch_parse) to a given ticket.
+
+    `ticket_external_id` is the EXTERNAL id stored in `attr_ticket_id`
+    on the SessionRow — the string the agent extracted from the branch
+    name. Cross-system collisions are theoretically possible (e.g.
+    "ABC-1" in both Jira and Linear); for V1 we accept that — the
+    branch parser itself doesn't distinguish systems.
+    """
+    stmt = (
+        select(SessionRow)
+        .where(
+            SessionRow.org_id == org_uuid,
+            SessionRow.attr_ticket_id == ticket_external_id,
+        )
+        .order_by(SessionRow.started_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def list_sessions(
     db: AsyncSession,
     *,

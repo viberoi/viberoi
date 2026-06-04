@@ -63,6 +63,7 @@ async function request<T>(
     }
     throw new ApiError(response.status, path, detail);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -155,6 +156,45 @@ export interface DeveloperProfile {
   last_active_at: string | null;
 }
 
+// ── Integrations (Integration service) ─────────────────────────────────────
+
+export interface IntegrationSummary {
+  id: string;
+  provider: string;
+  installed_by_developer_id: string | null;
+  expires_at: string | null;
+  scope: string | null;
+  created_at: string;
+  webhook_registration_status: string | null;
+  last_sync_at: string | null;
+  revoked: boolean;
+}
+
+export interface ConnectResponse {
+  authorize_url: string;
+}
+
+export interface SyncEnqueuedResponse {
+  sync_type: string;
+  enqueued: boolean;
+  trace_id: string;
+}
+
+// ── Notification channels ──────────────────────────────────────────────────
+
+export interface NotificationChannelSummary {
+  id: string;
+  channel: string;
+  has_webhook_url: boolean;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationChannelListResponse {
+  items: NotificationChannelSummary[];
+}
+
 export const api = {
   kpiSnapshot: (windowDays = 30) =>
     request<KpiSnapshot>(`/kpis/snapshot?window_days=${windowDays}`),
@@ -180,5 +220,45 @@ export const api = {
 
   getTicket: (id: string) => request<TicketDetail>(`/tickets/${id}`),
 
+  listTicketsInSprint: (sprintId: string) =>
+    request<{ items: TicketDetail[] }>(`/sprints/${sprintId}/tickets`),
+
+  listSessionsForTicket: (ticketId: string) =>
+    request<SessionListResponse>(`/tickets/${ticketId}/sessions`),
+
   me: () => request<DeveloperProfile>(`/developers/me`),
+
+  // ── Integrations (Integration service — different base) ────────────────
+  // The frontend's /api proxy points at the API service. The Integration
+  // service runs separately; for dev, we go through the same proxy. In
+  // production both are fronted by the same ALB with path-based routing.
+  listIntegrations: () =>
+    request<IntegrationSummary[]>(`/integrations`),
+
+  connectIntegration: (provider: string) =>
+    request<ConnectResponse>(`/integrations/${provider}/connect`, {
+      method: "POST",
+    }),
+
+  disconnectIntegration: (provider: string) =>
+    request<void>(`/integrations/${provider}`, { method: "DELETE" }),
+
+  syncIntegration: (provider: string) =>
+    request<SyncEnqueuedResponse>(`/integrations/${provider}/sync`, {
+      method: "POST",
+    }),
+
+  // ── Notification channels ────────────────────────────────────────────────
+  listChannels: () =>
+    request<NotificationChannelListResponse>(`/notifications/channels`),
+
+  upsertChannel: (channel: string, webhookUrl: string) =>
+    request<NotificationChannelSummary>(`/notifications/channels`, {
+      method: "POST",
+      body: JSON.stringify({ channel, webhook_url: webhookUrl }),
+      headers: { "Content-Type": "application/json" },
+    }),
+
+  disableChannel: (channel: string) =>
+    request<void>(`/notifications/channels/${channel}`, { method: "DELETE" }),
 };

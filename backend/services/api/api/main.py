@@ -5,7 +5,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from api.routes import developers, health, kpis, sessions, sprints, tickets
+from api.routes import (
+    developers,
+    health,
+    kpis,
+    notification_channels,
+    sessions,
+    sprints,
+    tickets,
+)
 from viberoi_shared.errors.handlers import register_handlers
 from viberoi_shared.logging import RequestIdMiddleware, configure_logging, get_logger
 
@@ -37,6 +45,11 @@ def create_app() -> FastAPI:
     app.include_router(kpis.router, prefix="/kpis", tags=["kpis"])
     app.include_router(
         developers.router, prefix="/developers", tags=["developers"]
+    )
+    app.include_router(
+        notification_channels.router,
+        prefix="/notifications/channels",
+        tags=["notifications"],
     )
     return app
 

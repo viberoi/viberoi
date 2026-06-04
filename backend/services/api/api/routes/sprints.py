@@ -13,7 +13,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 
 from api.app.auth import ApiAuthContext, require_role
-from api.schema.responses import SprintDetail, SprintListResponse, SprintSummary
+from api.schema.responses import (
+    SprintDetail,
+    SprintListResponse,
+    SprintSummary,
+    TicketDetail,
+    TicketListResponse,
+)
 from viberoi_shared.db import org_scoped_session
 from viberoi_shared.errors import NotFound
 from viberoi_shared.logging import get_logger
@@ -21,6 +27,7 @@ from viberoi_shared.tickets import (
     count_tickets_for_sprint,
     get_sprint,
     list_sprints_with_counts,
+    list_tickets_for_sprint,
 )
 from viberoi_shared.types.enums import Role
 
@@ -57,6 +64,43 @@ async def list_route(
             db, ctx.org_id, include_states=state
         )
     return SprintListResponse(items=[_summary(sp, cnt) for sp, cnt in rows])
+
+
+@router.get("/{sprint_uuid}/tickets", response_model=TicketListResponse)
+async def tickets_in_sprint_route(
+    sprint_uuid: UUID,
+    ctx: Annotated[
+        ApiAuthContext,
+        Depends(require_role(Role.ORG_ADMIN, Role.TEAM_LEAD, Role.DEVELOPER)),
+    ],
+) -> TicketListResponse:
+    async with org_scoped_session(ctx.org_id) as db:
+        sp = await get_sprint(db, sprint_uuid)
+        if sp.org_id != ctx.org_id:
+            raise NotFound(f"Sprint {sprint_uuid} not found")
+        rows = await list_tickets_for_sprint(
+            db, org_uuid=ctx.org_id, sprint_uuid=sprint_uuid
+        )
+    return TicketListResponse(
+        items=[
+            TicketDetail(
+                id=t.id,
+                system=t.system,
+                external_id=t.external_id,
+                title=t.title,
+                status=t.status,
+                sprint_id=t.sprint_id,
+                assignee_developer_id=t.assignee_developer_id,
+                story_points=t.story_points,
+                priority=t.priority,
+                created_at_external=t.created_at_external,
+                closed_at_external=t.closed_at_external,
+                total_sessions=0,
+                total_cost_usd=Decimal("0.00"),
+            )
+            for t in rows
+        ]
+    )
 
 
 @router.get("/{sprint_uuid}", response_model=SprintDetail)

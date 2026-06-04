@@ -11,8 +11,8 @@ import { SprintDetail } from "./pages/SprintDetail";
 import { TicketDetail } from "./pages/TicketDetail";
 import { Settings } from "./pages/Settings";
 import { Profile } from "./pages/settings/Profile";
-import { IntegrationsPlaceholder } from "./pages/settings/IntegrationsPlaceholder";
-import { NotificationsPlaceholder } from "./pages/settings/NotificationsPlaceholder";
+import { Integrations } from "./pages/settings/Integrations";
+import { Notifications } from "./pages/settings/Notifications";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -41,11 +41,8 @@ export function App() {
         <Route path="/settings" element={<Settings />}>
           <Route index element={<Navigate to="/settings/profile" replace />} />
           <Route path="profile" element={<Profile />} />
-          <Route path="integrations" element={<IntegrationsPlaceholder />} />
-          <Route
-            path="notifications"
-            element={<NotificationsPlaceholder />}
-          />
+          <Route path="integrations" element={<Integrations />} />
+          <Route path="notifications" element={<Notifications />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

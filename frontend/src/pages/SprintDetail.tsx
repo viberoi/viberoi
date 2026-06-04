@@ -1,9 +1,9 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Card, Metric, Text, Title } from "@tremor/react";
 import { ArrowLeft } from "lucide-react";
 
-import { api } from "../api/client";
+import { api, type TicketDetail } from "../api/client";
 
 function fmtCurrency(s: string | number): string {
   const n = typeof s === "string" ? parseFloat(s) : s;
@@ -19,6 +19,11 @@ export function SprintDetail() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["sprint", id],
     queryFn: () => api.getSprint(id!),
+    enabled: !!id,
+  });
+  const tickets = useQuery({
+    queryKey: ["sprint", id, "tickets"],
+    queryFn: () => api.listTicketsInSprint(id!),
     enabled: !!id,
   });
 
@@ -104,16 +109,78 @@ export function SprintDetail() {
             </Card>
           </div>
 
-          <Card className="mt-6 bg-viberoi-card border-white/5">
-            <Text className="text-viberoi-sub">
-              Per-ticket breakdown lands in batch 2 — currently the
-              backend's per-sprint rollups are placeholders (the Worker's
-              session-to-sprint join hasn't been wired in yet).
+          <div className="mt-8">
+            <Text className="font-ui text-sm uppercase tracking-wider text-viberoi-sub mb-2">
+              Tickets in sprint
             </Text>
-          </Card>
+            <Card className="bg-viberoi-card border-white/5 p-0 overflow-hidden">
+              <TicketsTable
+                tickets={tickets.data?.items ?? []}
+                isLoading={tickets.isLoading}
+              />
+            </Card>
+          </div>
         </>
       )}
     </div>
+  );
+}
+
+function TicketsTable({
+  tickets,
+  isLoading,
+}: {
+  tickets: TicketDetail[];
+  isLoading: boolean;
+}) {
+  const nav = useNavigate();
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-left text-xs uppercase tracking-wider text-viberoi-sub border-b border-white/5">
+          <th className="px-4 py-3 font-normal">External</th>
+          <th className="px-4 py-3 font-normal">Title</th>
+          <th className="px-4 py-3 font-normal">Status</th>
+          <th className="px-4 py-3 font-normal">Priority</th>
+          <th className="px-4 py-3 font-normal text-right">Story pts</th>
+        </tr>
+      </thead>
+      <tbody>
+        {isLoading && (
+          <tr>
+            <td colSpan={5} className="px-4 py-6 text-viberoi-sub">
+              Loading…
+            </td>
+          </tr>
+        )}
+        {!isLoading && tickets.length === 0 && (
+          <tr>
+            <td colSpan={5} className="px-4 py-6 text-viberoi-sub">
+              No tickets in this sprint yet.
+            </td>
+          </tr>
+        )}
+        {tickets.map((t) => (
+          <tr
+            key={t.id}
+            className="border-b border-white/5 hover:bg-white/5 cursor-pointer"
+            onClick={() => nav(`/tickets/${t.id}`)}
+          >
+            <td className="px-4 py-3 font-mono text-xs">{t.external_id}</td>
+            <td className="px-4 py-3">{t.title}</td>
+            <td className="px-4 py-3 text-viberoi-sub text-xs">
+              {t.status}
+            </td>
+            <td className="px-4 py-3 text-viberoi-sub text-xs">
+              {t.priority ?? "—"}
+            </td>
+            <td className="px-4 py-3 text-right font-mono">
+              {t.story_points ?? "—"}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

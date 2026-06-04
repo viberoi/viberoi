@@ -116,3 +116,55 @@ def test_detail_unknown_id_404(
     )
     r = client_as(org_admin_ctx).get(f"/sprints/{uuid4()}")
     assert r.status_code == 404
+
+
+# ── GET /sprints/{id}/tickets ─────────────────────────────────────────────
+
+
+def _fake_ticket():
+    t = MagicMock()
+    t.id = uuid4()
+    t.system = "jira"
+    t.external_id = "ABC-1"
+    t.title = "Add login"
+    t.status = "in_progress"
+    t.sprint_id = uuid4()
+    t.assignee_developer_id = None
+    t.story_points = None
+    t.priority = "medium"
+    t.created_at_external = datetime.now(tz=UTC)
+    t.closed_at_external = None
+    return t
+
+
+def test_tickets_in_sprint_returns_list(
+    client_as: Callable,
+    org_admin_ctx: ApiAuthContext,
+    monkeypatch: pytest.MonkeyPatch,
+    _stub_db,
+) -> None:
+    sp = _fake_sprint()
+    sp.org_id = org_admin_ctx.org_id
+    monkeypatch.setattr(sprints_routes, "get_sprint", AsyncMock(return_value=sp))
+    monkeypatch.setattr(
+        sprints_routes,
+        "list_tickets_for_sprint",
+        AsyncMock(return_value=[_fake_ticket(), _fake_ticket()]),
+    )
+    r = client_as(org_admin_ctx).get(f"/sprints/{sp.id}/tickets")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) == 2
+
+
+def test_tickets_in_sprint_cross_org_blocked(
+    client_as: Callable,
+    org_admin_ctx: ApiAuthContext,
+    monkeypatch: pytest.MonkeyPatch,
+    _stub_db,
+) -> None:
+    sp = _fake_sprint()
+    sp.org_id = uuid4()
+    monkeypatch.setattr(sprints_routes, "get_sprint", AsyncMock(return_value=sp))
+    r = client_as(org_admin_ctx).get(f"/sprints/{sp.id}/tickets")
+    assert r.status_code == 404

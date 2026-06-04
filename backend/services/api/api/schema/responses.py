@@ -116,6 +116,41 @@ class TicketDetail(BaseModel):
     total_cost_usd: Decimal
 
 
+class TicketListResponse(BaseModel):
+    """`GET /sprints/{id}/tickets` envelope."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TicketDetail]
+
+
+# ── Notification channels ──────────────────────────────────────────────────
+
+
+class NotificationChannelSummary(BaseModel):
+    """One row in `GET /notifications/channels`.
+
+    Never includes the decrypted webhook URL — we only expose `has_url`
+    (boolean) + the channel's metadata so the UI can show a "configured"
+    badge without leaking the URL back to the browser.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    channel: str
+    has_webhook_url: bool
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotificationChannelListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[NotificationChannelSummary]
+
+
 # ── KPIs ────────────────────────────────────────────────────────────────────
 
 

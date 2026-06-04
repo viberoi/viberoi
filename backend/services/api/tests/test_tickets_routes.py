@@ -82,3 +82,60 @@ def test_detail_unknown_404(
     )
     r = client_as(org_admin_ctx).get(f"/tickets/{uuid4()}")
     assert r.status_code == 404
+
+
+# ── GET /tickets/{id}/sessions ────────────────────────────────────────────
+
+
+def _fake_session_row():
+    s = MagicMock()
+    s.id = uuid4()
+    s.session_id = "sess-1"
+    s.developer_id = uuid4()
+    s.tool_name = "claude_code"
+    s.tool_model = "claude-opus-4-7"
+    s.started_at = datetime.now(tz=UTC)
+    s.ended_at = datetime.now(tz=UTC)
+    s.tokens_input = 1000
+    s.tokens_output = 200
+    s.total_cost_usd = Decimal("0.42")
+    s.attr_ticket_id = "ABC-1"
+    s.attr_signals = ["branch_parse"]
+    s.repo_branch = "feature/x"
+    s.schema_version = "1.0"
+    s.files_touched_count = 3
+    return s
+
+
+def test_sessions_for_ticket_returns_list(
+    client_as: Callable,
+    org_admin_ctx: ApiAuthContext,
+    monkeypatch: pytest.MonkeyPatch,
+    _stub_db,
+) -> None:
+    t = _fake_ticket(org_admin_ctx.org_id)
+    t.external_id = "ABC-1"
+    monkeypatch.setattr(tickets_routes, "get_ticket", AsyncMock(return_value=t))
+    monkeypatch.setattr(
+        tickets_routes,
+        "list_sessions_for_ticket",
+        AsyncMock(return_value=[_fake_session_row(), _fake_session_row()]),
+    )
+    r = client_as(org_admin_ctx).get(f"/tickets/{t.id}/sessions")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) == 2
+    # No paging on this endpoint — next_cursor is always null.
+    assert body["next_cursor"] is None
+
+
+def test_sessions_for_ticket_cross_org_blocked(
+    client_as: Callable,
+    org_admin_ctx: ApiAuthContext,
+    monkeypatch: pytest.MonkeyPatch,
+    _stub_db,
+) -> None:
+    t = _fake_ticket(uuid4())  # different org
+    monkeypatch.setattr(tickets_routes, "get_ticket", AsyncMock(return_value=t))
+    r = client_as(org_admin_ctx).get(f"/tickets/{t.id}/sessions")
+    assert r.status_code == 404

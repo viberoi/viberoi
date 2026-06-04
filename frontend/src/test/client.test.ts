@@ -108,4 +108,91 @@ describe("api client", () => {
     await api.me();
     expect(String(spy.mock.calls[0]![0])).toBe("/api/developers/me");
   });
+
+  it("GET /sprints/:id/tickets", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ items: [] }), { status: 200 }),
+      );
+    await api.listTicketsInSprint("sp-uuid");
+    expect(String(spy.mock.calls[0]![0])).toBe(
+      "/api/sprints/sp-uuid/tickets",
+    );
+  });
+
+  it("GET /tickets/:id/sessions", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ items: [], next_cursor: null }), {
+          status: 200,
+        }),
+      );
+    await api.listSessionsForTicket("t-uuid");
+    expect(String(spy.mock.calls[0]![0])).toBe(
+      "/api/tickets/t-uuid/sessions",
+    );
+  });
+
+  it("POST /integrations/:provider/connect", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ authorize_url: "https://x" }), {
+        status: 200,
+      }),
+    );
+    await api.connectIntegration("github");
+    const [url, init] = spy.mock.calls[0]!;
+    expect(String(url)).toBe("/api/integrations/github/connect");
+    expect((init as RequestInit).method).toBe("POST");
+  });
+
+  it("DELETE /integrations/:provider", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    await api.disconnectIntegration("jira");
+    expect((spy.mock.calls[0]![1] as RequestInit).method).toBe("DELETE");
+  });
+
+  it("POST /integrations/:provider/sync", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          sync_type: "manual",
+          enqueued: true,
+          trace_id: "t",
+        }),
+        { status: 200 },
+      ),
+    );
+    await api.syncIntegration("linear");
+    expect(String(spy.mock.calls[0]![0])).toBe(
+      "/api/integrations/linear/sync",
+    );
+  });
+
+  it("POST /notifications/channels sends webhook URL in body", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "x" }), { status: 201 }),
+    );
+    await api.upsertChannel("slack", "https://hooks.slack.com/services/T/B/X");
+    const init = spy.mock.calls[0]![1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({
+      channel: "slack",
+      webhook_url: "https://hooks.slack.com/services/T/B/X",
+    });
+  });
+
+  it("DELETE /notifications/channels/:channel", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    await api.disableChannel("slack");
+    expect(String(spy.mock.calls[0]![0])).toBe(
+      "/api/notifications/channels/slack",
+    );
+    expect((spy.mock.calls[0]![1] as RequestInit).method).toBe("DELETE");
+  });
 });

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Text, Title } from "@tremor/react";
 import { ArrowLeft } from "lucide-react";
 
-import { api } from "../api/client";
+import { api, type SessionSummary } from "../api/client";
 
 function fmtCurrency(s: string | number): string {
   const n = typeof s === "string" ? parseFloat(s) : s;
@@ -20,6 +20,11 @@ export function TicketDetail() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["ticket", id],
     queryFn: () => api.getTicket(id!),
+    enabled: !!id,
+  });
+  const sessions = useQuery({
+    queryKey: ["ticket", id, "sessions"],
+    queryFn: () => api.listSessionsForTicket(id!),
     enabled: !!id,
   });
 
@@ -110,15 +115,81 @@ export function TicketDetail() {
             </div>
           )}
 
-          <Card className="mt-6 bg-viberoi-card border-white/5">
-            <Text className="text-viberoi-sub">
-              Per-session list lands in batch 2 — currently the backend's
-              per-ticket session count is a placeholder (the Worker join
-              hasn't been wired in yet).
+          <div className="mt-8">
+            <Text className="font-ui text-sm uppercase tracking-wider text-viberoi-sub mb-2">
+              Sessions attributed via branch parse
             </Text>
-          </Card>
+            <Card className="bg-viberoi-card border-white/5 p-0 overflow-hidden">
+              <SessionsTable
+                sessions={sessions.data?.items ?? []}
+                isLoading={sessions.isLoading}
+              />
+            </Card>
+          </div>
         </>
       )}
     </div>
+  );
+}
+
+function SessionsTable({
+  sessions,
+  isLoading,
+}: {
+  sessions: SessionSummary[];
+  isLoading: boolean;
+}) {
+  const nav = useNavigate();
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-left text-xs uppercase tracking-wider text-viberoi-sub border-b border-white/5">
+          <th className="px-4 py-3 font-normal">Started</th>
+          <th className="px-4 py-3 font-normal">Tool</th>
+          <th className="px-4 py-3 font-normal">Branch</th>
+          <th className="px-4 py-3 font-normal text-right">Tokens</th>
+          <th className="px-4 py-3 font-normal text-right">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {isLoading && (
+          <tr>
+            <td colSpan={5} className="px-4 py-6 text-viberoi-sub">
+              Loading…
+            </td>
+          </tr>
+        )}
+        {!isLoading && sessions.length === 0 && (
+          <tr>
+            <td colSpan={5} className="px-4 py-6 text-viberoi-sub">
+              No sessions yet — the agent attributes via branch name.
+              Sessions show up here once a branch matches this ticket's
+              external id.
+            </td>
+          </tr>
+        )}
+        {sessions.map((s) => (
+          <tr
+            key={s.id}
+            className="border-b border-white/5 hover:bg-white/5 cursor-pointer"
+            onClick={() => nav(`/sessions/${s.id}`)}
+          >
+            <td className="px-4 py-3 font-mono text-xs">
+              {new Date(s.started_at).toLocaleString()}
+            </td>
+            <td className="px-4 py-3">{s.tool_name}</td>
+            <td className="px-4 py-3 font-mono text-xs text-viberoi-sub">
+              {s.branch_name ?? "—"}
+            </td>
+            <td className="px-4 py-3 text-right font-mono">
+              {s.total_tokens.toLocaleString()}
+            </td>
+            <td className="px-4 py-3 text-right font-mono">
+              ${parseFloat(s.cost_usd).toFixed(2)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

@@ -12,6 +12,7 @@ from viberoi_shared.sessions.repository import (
     get_by_external_id,
     get_by_id,
     list_sessions,
+    list_sessions_for_ticket,
     upsert,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     "get_by_external_id",
     "get_by_id",
     "list_sessions",
+    "list_sessions_for_ticket",
     "upsert",
 ]
