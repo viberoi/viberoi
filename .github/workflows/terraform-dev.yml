@@ -1,0 +1,196 @@
+# GitHub Actions — Terraform for the dev environment.
+#
+# Auto-plans on every push to main that touches infra/terraform/.
+# Apply / destroy require a workflow_dispatch invocation + approval
+# from the `aws-dev` GitHub Environment (configure required reviewers
+# in Settings → Environments → aws-dev).
+#
+# AWS credentials come from the OIDC role
+# `arn:aws:iam::876611282878:role/viberoi-github-actions-terraform`
+# — no long-lived secrets stored in GitHub. Trust policy restricts
+# AssumeRoleWithWebIdentity to this repo's `main` branch.
+
+name: terraform-dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-dev.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "terraform action to run"
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+permissions:
+  id-token: write # OIDC: STS assume-role-with-web-identity
+  contents: read
+  pull-requests: write # plan summary comments
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "876611282878"
+  TF_VERSION: "1.9.8"
+  TF_WORKDIR: infra/terraform/envs/dev
+  TF_STATE_BUCKET: viberoi-tf-state-876611282878
+  AWS_ROLE_ARN: arn:aws:iam::876611282878:role/viberoi-github-actions-terraform
+
+jobs:
+  plan:
+    name: terraform plan
+    # Skip plan on a destroy dispatch — destroy doesn't need a plan artifact.
+    if: github.event_name == 'push' || inputs.action != 'destroy'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: gha-terraform-plan-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false # cleaner output capture
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -input=false
+
+      - name: Terraform fmt check
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform fmt -check -recursive ../../
+
+      - name: Terraform validate
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform validate -no-color
+
+      - name: Terraform plan
+        id: plan
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: |
+          terraform plan -no-color -out=tfplan -input=false 2>&1 | tee plan.txt
+          # Save a clean text summary too — useful for the workflow summary.
+          terraform show -no-color tfplan > plan-show.txt
+
+      - name: Render plan to GitHub summary
+        if: always()
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: |
+          {
+            echo "## Terraform plan (dev)"
+            echo ""
+            echo '<details><summary>Show plan</summary>'
+            echo ""
+            echo '```'
+            head -c 60000 plan-show.txt
+            echo '```'
+            echo ""
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+          path: |
+            ${{ env.TF_WORKDIR }}/tfplan
+            ${{ env.TF_WORKDIR }}/plan-show.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  apply:
+    name: terraform apply
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: aws-dev # required reviewers gate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: gha-terraform-apply-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+          path: ${{ env.TF_WORKDIR }}
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -input=false
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform apply -auto-approve -input=false tfplan
+
+      - name: Render outputs to summary
+        if: always()
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: |
+          {
+            echo "## Terraform outputs (dev)"
+            echo '```'
+            terraform output 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  destroy:
+    name: terraform destroy
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: aws-dev-destroy # separate environment — more guarded
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: gha-terraform-destroy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -input=false
+
+      - name: Terraform destroy
+        working-directory: ${{ env.TF_WORKDIR }}
+        run: terraform destroy -auto-approve -input=false
