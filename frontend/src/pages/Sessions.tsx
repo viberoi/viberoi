@@ -58,8 +58,17 @@ export function Sessions() {
             )}
             {data?.items.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-viberoi-sub">
-                  No sessions in range. Have you connected the agent yet?
+                <td colSpan={6} className="px-6 py-12 text-center">
+                  <div className="text-viberoi-text font-medium mb-1">
+                    No sessions yet
+                  </div>
+                  <div className="text-viberoi-sub text-xs">
+                    Run the agent to capture your Claude Code / Cursor /
+                    Copilot sessions:{" "}
+                    <code className="text-viberoi-accent font-mono">
+                      viberoi-agent push
+                    </code>
+                  </div>
                 </td>
               </tr>
             )}

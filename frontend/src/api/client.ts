@@ -207,6 +207,14 @@ export const api = {
   kpiSnapshot: (windowDays = 30) =>
     request<KpiSnapshot>(`/kpis/snapshot?window_days=${windowDays}`),
 
+  kpiTimeseries: (windowDays = 30) =>
+    request<TimeseriesResponse>(`/kpis/timeseries?window_days=${windowDays}`),
+
+  kpiByDeveloper: (windowDays = 30, limit = 10) =>
+    request<ByDeveloperResponse>(
+      `/kpis/by-developer?window_days=${windowDays}&limit=${limit}`,
+    ),
+
   listSessions: (cursor?: string, limit = 50) => {
     const q = new URLSearchParams();
     if (cursor) q.set("cursor", cursor);
@@ -285,4 +293,30 @@ export interface InviteResponse {
   role: string;
   cognito_sub: string;
   message: string;
+}
+
+export interface TimeseriesPoint {
+  day: string;
+  sessions: number;
+  tokens: number;
+  cost_usd: string;
+}
+
+export interface TimeseriesResponse {
+  window_days: number;
+  points: TimeseriesPoint[];
+}
+
+export interface DeveloperRollup {
+  developer_id: string;
+  email: string;
+  role: string;
+  sessions: number;
+  tokens: number;
+  cost_usd: string;
+}
+
+export interface ByDeveloperResponse {
+  window_days: number;
+  items: DeveloperRollup[];
 }

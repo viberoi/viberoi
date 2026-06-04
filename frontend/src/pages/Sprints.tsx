@@ -77,10 +77,23 @@ export function Sprints() {
               <Empty colspan={6}>Loading…</Empty>
             )}
             {data?.items.length === 0 && (
-              <Empty colspan={6}>
-                No sprints found. Try another state filter, or connect a
-                provider in Settings.
-              </Empty>
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center">
+                  <div className="text-viberoi-text font-medium mb-1">
+                    No sprints in this view
+                  </div>
+                  <div className="text-viberoi-sub text-xs">
+                    Connect Jira / Linear / GitHub in{" "}
+                    <Link
+                      to="/settings/integrations"
+                      className="text-viberoi-accent hover:underline"
+                    >
+                      Settings → Integrations
+                    </Link>{" "}
+                    to import sprints automatically.
+                  </div>
+                </td>
+              </tr>
             )}
             {data?.items.map((sp) => (
               <Row key={sp.id} sprint={sp} />
