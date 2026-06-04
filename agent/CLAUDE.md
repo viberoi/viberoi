@@ -26,13 +26,25 @@ agent/
   CLAUDE.md
 ```
 
-## V1 scope
+## Current scope
 
-- **One tool: Claude Code (CLI session.jsonl).** Subagent aggregation,
-  AGENT MODE audit, ANTHROPIC_API_KEY landmine detection deferred.
-- One source per session, no reconciliation against the Anthropic Admin API.
+- **One tool: Claude Code.** Two artifact kinds:
+  - CLI `session.jsonl` + `subagents/agent-*.jsonl` — subagents folded
+    into the parent session's totals.
+  - AGENT MODE `audit.jsonl` (Cowork) — separate root, separate reader.
+- `ANTHROPIC_API_KEY` env-var detection (CLI path) + `apiKeySource`
+  field detection (AGENT MODE path). Both flip the session's
+  `tool.pricing_model.type` from `subscription` to `api_key` so the
+  backend reconciler knows to bill at API rates.
 - Tracks `last_session_id + last_uploaded_at` per tool in `state.json`
   so re-running `push` doesn't re-upload.
+
+## Deferred to V3
+
+- Reconciliation against the Anthropic Admin / Usage API.
+- Cursor / Kiro / Copilot / Windsurf / JetBrains readers.
+- Installer + service mode (Windows service / launchd / systemd).
+- Auto-update.
 
 ## Commands
 

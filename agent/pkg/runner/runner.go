@@ -21,6 +21,7 @@ import (
 	"github.com/viberoi/viberoi/agent/pkg/ingest"
 	"github.com/viberoi/viberoi/agent/pkg/schema"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode"
+	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode_agentmode"
 	"github.com/viberoi/viberoi/agent/pkg/state"
 )
 
@@ -63,49 +64,98 @@ func New(cfg *config.Config, st *state.Store) *Runner {
 	}
 }
 
-// Run executes one full pass: discover + parse + push.
+// Run executes one full pass: discover + parse + push for BOTH the
+// Claude Code CLI sessions and the AGENT MODE audit logs.
 func (r *Runner) Run(ctx context.Context) (Result, error) {
 	var res Result
 	if r.Cfg.ClaudeCodePath == "" {
 		return res, errors.New("runner: ClaudeCodePath not configured")
 	}
-	files, err := discoverSessionFiles(r.Cfg.ClaudeCodePath)
-	if err != nil {
-		return res, fmt.Errorf("discover: %w", err)
+
+	// ANTHROPIC_API_KEY landmine: when this env var is set, Claude Code
+	// silently bills at API rates regardless of the user's Pro/Team
+	// subscription. Surface it every run so it's not invisible.
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		r.Logger(
+			"anthropic_api_key_set_billing_landmine",
+			"hint", "ANTHROPIC_API_KEY is set; sessions may bill at API rates regardless of subscription",
+		)
 	}
-	res.Discovered = len(files)
+
+	// ── CLI sessions ──────────────────────────────────────────────────
+	files, err := discoverCLISessionFiles(r.Cfg.ClaudeCodePath)
+	if err != nil {
+		return res, fmt.Errorf("discover cli: %w", err)
+	}
 	for _, path := range files {
 		if ctx.Err() != nil {
 			return res, ctx.Err()
 		}
-		session, err := r.buildSession(ctx, path)
+		res.Discovered++
+		session, err := r.buildCLISession(ctx, path)
 		if err != nil {
 			r.Logger("session_build_failed", "path", path, "error_type", typeName(err))
 			res.Failed++
 			continue
 		}
-		if r.State.Has(schema.ToolClaudeCode, session.SessionID) {
-			res.Skipped++
-			continue
+		if err := r.pushIfNew(ctx, session, &res); err != nil {
+			return res, err
 		}
-		if err := r.Client.PushOne(ctx, *session); err != nil {
-			if errors.Is(err, ingest.ErrAuth) {
-				return res, err // surface auth failure to caller
-			}
-			r.Logger(
-				"session_push_failed",
-				"session_id", session.SessionID,
-				"error_type", typeName(err),
-			)
-			res.Failed++
-			continue
-		}
-		if err := r.State.Mark(schema.ToolClaudeCode, session.SessionID); err != nil {
-			r.Logger("state_mark_failed", "session_id", session.SessionID)
-		}
-		res.Pushed++
 	}
+
+	// ── AGENT MODE sessions (optional) ────────────────────────────────
+	if r.Cfg.ClaudeCodeAgentModePath != "" {
+		audits, err := discoverAgentModeAuditFiles(r.Cfg.ClaudeCodeAgentModePath)
+		if err != nil {
+			return res, fmt.Errorf("discover agent mode: %w", err)
+		}
+		for _, path := range audits {
+			if ctx.Err() != nil {
+				return res, ctx.Err()
+			}
+			res.Discovered++
+			session, err := r.buildAgentModeSession(ctx, path)
+			if err != nil {
+				r.Logger("agent_mode_build_failed", "path", path, "error_type", typeName(err))
+				res.Failed++
+				continue
+			}
+			if err := r.pushIfNew(ctx, session, &res); err != nil {
+				return res, err
+			}
+		}
+	}
+
 	return res, nil
+}
+
+// pushIfNew sends a session unless its id is already in state. Auth
+// failures surface to the caller (no retry). All other errors increment
+// the failed counter and continue.
+func (r *Runner) pushIfNew(
+	ctx context.Context, session *schema.Session, res *Result,
+) error {
+	if r.State.Has(schema.ToolClaudeCode, session.SessionID) {
+		res.Skipped++
+		return nil
+	}
+	if err := r.Client.PushOne(ctx, *session); err != nil {
+		if errors.Is(err, ingest.ErrAuth) {
+			return err
+		}
+		r.Logger(
+			"session_push_failed",
+			"session_id", session.SessionID,
+			"error_type", typeName(err),
+		)
+		res.Failed++
+		return nil
+	}
+	if err := r.State.Mark(schema.ToolClaudeCode, session.SessionID); err != nil {
+		r.Logger("state_mark_failed", "session_id", session.SessionID)
+	}
+	res.Pushed++
+	return nil
 }
 
 // RunForever loops Run() with the configured poll interval. Returns
@@ -126,28 +176,12 @@ func (r *Runner) RunForever(ctx context.Context) error {
 	}
 }
 
-// buildSession parses a Claude Code session.jsonl and folds in git data
-// for the session window.
-func (r *Runner) buildSession(ctx context.Context, jsonlPath string) (*schema.Session, error) {
+// buildCLISession parses a Claude Code session.jsonl (with its
+// subagents/ folded in) and enriches with git data.
+func (r *Runner) buildCLISession(ctx context.Context, jsonlPath string) (*schema.Session, error) {
 	fs, err := claudecode.ReadFile(jsonlPath)
 	if err != nil {
 		return nil, err
-	}
-
-	cwd, _ := os.Getwd()
-	repo, _ := git.Inspect(ctx, cwd) // best-effort; not in a repo → blank
-	var commits []string
-	loc := git.LOCDiff{}
-	if repo != nil && !fs.StartedAt.IsZero() {
-		commits, _ = git.CommitsSince(ctx, repo.OriginCWD, fs.StartedAt, 50)
-		loc, _ = git.LOCSince(ctx, repo.OriginCWD, fs.StartedAt)
-	}
-
-	started := fs.StartedAt
-	ended := fs.EndedAt
-	durMin := int(ended.Sub(started).Minutes())
-	if durMin < 0 {
-		durMin = 0
 	}
 
 	mode := schema.ModeAgent
@@ -155,41 +189,134 @@ func (r *Runner) buildSession(ctx context.Context, jsonlPath string) (*schema.Se
 		mode = schema.ModeChat
 	}
 
-	s := &schema.Session{
-		SessionID:   fs.SessionID,
+	return r.assembleSession(ctx, sessionInputs{
+		SessionID:     fs.SessionID,
+		Surface:       schema.SurfaceCLI,
+		Model:         fs.Model,
+		StartedAt:     fs.StartedAt,
+		EndedAt:       fs.EndedAt,
+		Input:         fs.Tokens.Input,
+		Output:        fs.Tokens.Output,
+		CacheRead:     fs.Tokens.CacheRead,
+		CacheWrite:    fs.Tokens.CacheWrite,
+		TurnCount:     fs.TurnCount,
+		SubagentCount: fs.SubagentCount,
+		Mode:          mode,
+		IsAgentic:     fs.IsAgentic,
+		FilesTouched:  fs.FilesTouched,
+		// CLI doesn't expose apiKeySource — fall back to env-var detection.
+		UsingAPIKey: os.Getenv("ANTHROPIC_API_KEY") != "",
+	}), nil
+}
+
+// buildAgentModeSession parses an AGENT MODE audit.jsonl and enriches
+// with git data. AGENT MODE sessions are always agentic; mode is fixed
+// to "agent". apiKeySource is authoritative here (no env fallback).
+func (r *Runner) buildAgentModeSession(ctx context.Context, jsonlPath string) (*schema.Session, error) {
+	a, err := claudecode_agentmode.ReadFile(jsonlPath)
+	if err != nil {
+		return nil, err
+	}
+	return r.assembleSession(ctx, sessionInputs{
+		SessionID:    a.SessionID,
+		Surface:      schema.SurfaceDesktopApp, // AGENT MODE runs in the desktop Cowork UI
+		Model:        a.Model,
+		StartedAt:    a.StartedAt,
+		EndedAt:      a.EndedAt,
+		Input:        a.Tokens.Input,
+		Output:       a.Tokens.Output,
+		CacheRead:    a.Tokens.CacheRead,
+		CacheWrite:   a.Tokens.CacheWrite,
+		TurnCount:    a.TurnCount,
+		Mode:         schema.ModeAgent,
+		IsAgentic:    true,
+		FilesTouched: a.FilesTouched,
+		UsingAPIKey:  a.UsingAPIKey(),
+		DataSources: []string{
+			schema.SourceLocalJSONL,
+			schema.SourceGitDiff,
+		},
+	}), nil
+}
+
+// sessionInputs aggregates everything assembleSession needs so the two
+// builders stay declarative and don't drift apart.
+type sessionInputs struct {
+	SessionID                                   string
+	Surface, Model, Mode                        string
+	StartedAt, EndedAt                          time.Time
+	Input, Output, CacheRead, CacheWrite        int
+	TurnCount, SubagentCount                    int
+	IsAgentic                                   bool
+	FilesTouched                                []string
+	UsingAPIKey                                 bool
+	DataSources                                 []string // overrides default
+}
+
+// assembleSession is the shared builder for CLI and AGENT MODE sessions.
+// It folds in git data and applies the ANTHROPIC_API_KEY pricing flip.
+func (r *Runner) assembleSession(ctx context.Context, in sessionInputs) *schema.Session {
+	cwd, _ := os.Getwd()
+	repo, _ := git.Inspect(ctx, cwd)
+	var commits []string
+	loc := git.LOCDiff{}
+	if repo != nil && !in.StartedAt.IsZero() {
+		commits, _ = git.CommitsSince(ctx, repo.OriginCWD, in.StartedAt, 50)
+		loc, _ = git.LOCSince(ctx, repo.OriginCWD, in.StartedAt)
+	}
+
+	durMin := int(in.EndedAt.Sub(in.StartedAt).Minutes())
+	if durMin < 0 {
+		durMin = 0
+	}
+
+	// Pricing: subscription unless we detect the API-key landmine.
+	pricingType := schema.PricingSubscription
+	if in.UsingAPIKey {
+		pricingType = schema.PricingAPIKey
+	}
+
+	sources := in.DataSources
+	if len(sources) == 0 {
+		sources = []string{schema.SourceLocalJSONL, schema.SourceGitDiff}
+	}
+
+	return &schema.Session{
+		SessionID:   in.SessionID,
 		DeveloperID: r.Cfg.DeveloperID,
 		OrgID:       r.Cfg.OrgID,
 		Tool: schema.ToolInfo{
 			Name:        schema.ToolClaudeCode,
-			Surface:     schema.SurfaceCLI,
+			Surface:     in.Surface,
 			Version:     "unknown",
-			Model:       safeOr(fs.Model, "unknown"),
+			Model:       safeOr(in.Model, "unknown"),
 			CaptureMode: schema.CaptureLocalExact,
 			PricingModel: schema.Pricing{
-				Type:    schema.PricingSubscription,
+				Type:    pricingType,
 				Unit:    schema.PricingUnitTokens,
 				RateUSD: 0,
 			},
 		},
 		Timing: schema.Timing{
-			StartedAt:         started,
-			EndedAt:           ended,
+			StartedAt:         in.StartedAt,
+			EndedAt:           in.EndedAt,
 			ActiveDurationMin: durMin,
 		},
 		Tokens: schema.Tokens{
-			Input:        fs.Tokens.Input,
-			Output:       fs.Tokens.Output,
-			CacheRead:    fs.Tokens.CacheRead,
-			CacheWrite:   fs.Tokens.CacheWrite,
-			TotalCostUSD: 0, // subscription tool — cost reconciles server-side
+			Input:        in.Input,
+			Output:       in.Output,
+			CacheRead:    in.CacheRead,
+			CacheWrite:   in.CacheWrite,
+			TotalCostUSD: 0, // reconciliation happens server-side
 			IsEstimated:  false,
 		},
 		Activity: schema.Activity{
-			TurnCount:         fs.TurnCount,
-			Mode:              mode,
-			IsAgentic:         fs.IsAgentic,
-			FilesTouched:      fs.FilesTouched,
-			FilesTouchedCount: len(fs.FilesTouched),
+			TurnCount:         in.TurnCount,
+			Mode:              in.Mode,
+			IsAgentic:         in.IsAgentic,
+			SubagentCount:     in.SubagentCount,
+			FilesTouched:      in.FilesTouched,
+			FilesTouchedCount: len(in.FilesTouched),
 		},
 		CodeOutput: schema.CodeOutput{
 			LinesAdded:   loc.LinesAdded,
@@ -215,17 +342,25 @@ func (r *Runner) buildSession(ctx context.Context, jsonlPath string) (*schema.Se
 		Meta: schema.Meta{
 			CapturedAt:    r.Now().UTC(),
 			AgentVersion:  AgentVersion,
-			DataSources:   []string{schema.SourceLocalJSONL, schema.SourceGitDiff},
+			DataSources:   sources,
 			SchemaVersion: schema.SchemaVersion,
 		},
 	}
-	return s, nil
 }
 
-// discoverSessionFiles walks the configured root looking for files named
-// `session.jsonl`. We're tolerant of missing roots — returns an empty
-// slice rather than an error.
-func discoverSessionFiles(root string) ([]string, error) {
+// discoverCLISessionFiles walks the Claude Code CLI sessions root for
+// `session.jsonl`. Missing root → empty slice, no error.
+func discoverCLISessionFiles(root string) ([]string, error) {
+	return walkForName(root, "session.jsonl")
+}
+
+// discoverAgentModeAuditFiles walks the AGENT MODE sessions root for
+// `audit.jsonl`. Missing root → empty slice, no error.
+func discoverAgentModeAuditFiles(root string) ([]string, error) {
+	return walkForName(root, "audit.jsonl")
+}
+
+func walkForName(root, name string) ([]string, error) {
 	if _, err := os.Stat(root); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -237,7 +372,7 @@ func discoverSessionFiles(root string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if d.Name() == "session.jsonl" {
+		if d.Name() == name {
 			out = append(out, path)
 		}
 		return nil

@@ -1,0 +1,2 @@
+{"type":"init","timestamp":"2026-06-04T12:00:00Z","init":{"session_id":"agentmode-apikey","apiKeySource":"environment","model":"claude-opus-4-7","tools":["Read"],"account":"alice@acme"}}
+{"type":"turn.complete","timestamp":"2026-06-04T12:00:10Z","turn":{"completedTurns":1,"usage":{"input_tokens":1000,"output_tokens":200,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}

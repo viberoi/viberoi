@@ -1,0 +1,3 @@
+{"type":"summary","session_id":"sess-parent-1","timestamp":"2026-06-04T10:00:00Z"}
+{"type":"message","session_id":"sess-parent-1","timestamp":"2026-06-04T10:00:05Z","message":{"role":"user","content":[{"type":"text"}]}}
+{"type":"message","session_id":"sess-parent-1","timestamp":"2026-06-04T10:00:10Z","message":{"role":"assistant","model":"claude-opus-4-7","usage":{"input_tokens":1000,"output_tokens":200,"cache_read_input_tokens":500,"cache_creation_input_tokens":0},"content":[{"type":"tool_use","name":"Task","input":{"file_path":"/repo/parent.go"}}]}}

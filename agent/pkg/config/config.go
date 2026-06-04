@@ -28,6 +28,9 @@ type Config struct {
 	IngestURL      string `yaml:"ingest_url"`
 	PollIntervalS  int    `yaml:"poll_interval_seconds"`
 	ClaudeCodePath string `yaml:"claude_code_path,omitempty"`
+	// Root containing Claude Code AGENT MODE (Cowork) audit logs:
+	// `%APPDATA%\Claude\local-agent-mode-sessions\`. Empty = skip AGENT MODE.
+	ClaudeCodeAgentModePath string `yaml:"claude_code_agent_mode_path,omitempty"`
 }
 
 // Validate returns an error if any required field is missing.

@@ -1,24 +1,27 @@
 // Package claudecode reads Claude Code CLI session JSONL files.
 //
-// V1 scope — reads the main session.jsonl only:
-//   * Sums input/output/cache token counts across every assistant turn.
-//   * Counts turn boundaries.
-//   * Extracts file paths from tool_use entries (file_path arg) into
-//     `files_touched` — paths only, never file contents.
-//   * Picks earliest/latest timestamp for the session window.
-//
-// Deferred to V2 (per design doc):
-//   * Subagent aggregation (subagents/agent-*.jsonl)
-//   * AGENT MODE audit log
-//   * ANTHROPIC_API_KEY landmine detection
+// Reads two artifacts from one CLI session directory:
+//   1. session.jsonl — the main conversation (per-turn tokens, tool_use).
+//   2. subagents/agent-*.jsonl — per-subagent token series. Summed into
+//      the parent session so cost reflects total work, not just the
+//      orchestrator's portion.
 //
 // File layout (verified by reading real session files; see
 // `frontend/_design/VibeROI-DataSource-Master-final.md` TOOL #1):
-//   %APPDATA%\Claude\local-cli-sessions\<account>\<group>\<cliSessionId>\session.jsonl
 //
-// Each line is a JSON object. We only care about a few fields and
+//   %APPDATA%\Claude\local-cli-sessions\<account>\<group>\<cliSessionId>\
+//     session.jsonl
+//     subagents\
+//       agent-<id>.jsonl
+//       agent-<id>.meta.json   (skipped — non-JSONL sidecar)
+//
+// Each .jsonl line is a JSON object. We only depend on a few fields and
 // ignore everything else — Claude Code adds fields between releases,
 // and a strict parser would break on every minor update.
+//
+// AGENT MODE (Cowork / agentic) sessions live elsewhere
+// (local-agent-mode-sessions/) and are handled by the sibling
+// `claudecode_agentmode` package.
 package claudecode
 
 import (
@@ -26,26 +29,30 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
 
-// FileSession is the parsed result of one session.jsonl file.
+// FileSession is the parsed result of one CLI session — main file
+// plus all its subagent files folded in.
 type FileSession struct {
-	SessionID    string
-	Model        string
-	StartedAt    time.Time
-	EndedAt      time.Time
-	Tokens       Tokens
-	TurnCount    int
-	FilesTouched []string // unique, sorted, real paths only
-	IsAgentic    bool
+	SessionID     string
+	Model         string
+	StartedAt     time.Time
+	EndedAt       time.Time
+	Tokens        Tokens
+	TurnCount     int
+	SubagentCount int
+	FilesTouched  []string // unique, sorted, real paths only
+	IsAgentic     bool
 }
 
 // Tokens holds the four token series Claude Code records per turn.
-// We sum across all assistant turns in the file.
+// We sum across every assistant turn — main session + every subagent.
 type Tokens struct {
 	Input      int
 	Output     int
@@ -54,8 +61,7 @@ type Tokens struct {
 }
 
 // rawTurn is the minimal subset of the on-wire shape we depend on.
-// Everything else is ignored — Claude Code adds fields freely between
-// versions and a strict decoder would break on every update.
+// Both session.jsonl and agent-*.jsonl use this shape.
 type rawTurn struct {
 	Type      string    `json:"type"`
 	SessionID string    `json:"session_id"`
@@ -79,24 +85,58 @@ type rawTurn struct {
 	} `json:"message,omitempty"`
 }
 
-// ReadFile parses a session.jsonl file at `path`.
+// ReadFile parses a session.jsonl file at `path` AND every sibling
+// `subagents/agent-*.jsonl`. Subagent tokens + files_touched are
+// summed into the returned FileSession.
 //
-// Returns an empty FileSession (with no error) if the file exists but
-// contains no parseable turns — that happens when the file is one byte
-// long (Claude Code creates the file empty on session start). Caller
-// can decide to skip.
-//
-// Returns an error if the file is missing or unreadable.
+// Returns an error if the main file is missing or unreadable.
+// Subagent files that fail to parse are logged-and-skipped (caller
+// won't see them, but main session won't fail).
 func ReadFile(path string) (*FileSession, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return readFromReader(f)
+	out, err := readMain(f)
+	_ = f.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// Fold in subagents from a sibling subagents/ directory.
+	subagentDir := filepath.Join(filepath.Dir(path), "subagents")
+	if entries, err := os.ReadDir(subagentDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			if !strings.HasPrefix(name, "agent-") || !strings.HasSuffix(name, ".jsonl") {
+				continue
+			}
+			subPath := filepath.Join(subagentDir, name)
+			subFile, err := os.Open(subPath)
+			if err != nil {
+				continue // unreadable subagent shouldn't kill the main session
+			}
+			sub, err := readMain(subFile)
+			_ = subFile.Close()
+			if err != nil {
+				continue
+			}
+			mergeSubagent(out, sub)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		// Real failure reading the subagents/ dir other than not-found.
+		// Keep the main session result; surface as a no-op (subagents
+		// just won't be aggregated this run).
+	}
+	return out, nil
 }
 
-func readFromReader(r io.Reader) (*FileSession, error) {
+// readMain parses one JSONL stream. Used for both session.jsonl and
+// every subagents/agent-*.jsonl — the format is identical.
+func readMain(r io.Reader) (*FileSession, error) {
 	files := map[string]struct{}{}
 	out := &FileSession{}
 	scanner := bufio.NewScanner(r)
@@ -143,8 +183,6 @@ func readFromReader(r io.Reader) (*FileSession, error) {
 		}
 		for _, c := range t.Message.Content {
 			if c.Type == "tool_use" {
-				// Any tool use marks the session as agentic (running code,
-				// reading files, etc. — not pure chat).
 				out.IsAgentic = true
 				if c.Input != nil && c.Input.FilePath != "" {
 					files[c.Input.FilePath] = struct{}{}
@@ -161,6 +199,38 @@ func readFromReader(r io.Reader) (*FileSession, error) {
 	out.TurnCount = turnCount
 	out.FilesTouched = sortedKeys(files)
 	return out, nil
+}
+
+// mergeSubagent folds a subagent's totals into the parent session.
+// Tokens + files_touched aggregate; turn count adds the subagent's
+// assistant turns; the time window extends if the subagent's range
+// reaches beyond the main session's.
+func mergeSubagent(main, sub *FileSession) {
+	main.SubagentCount++
+	main.Tokens.Input += sub.Tokens.Input
+	main.Tokens.Output += sub.Tokens.Output
+	main.Tokens.CacheRead += sub.Tokens.CacheRead
+	main.Tokens.CacheWrite += sub.Tokens.CacheWrite
+	main.TurnCount += sub.TurnCount
+	if sub.IsAgentic {
+		main.IsAgentic = true
+	}
+	// Extend time window if the subagent ran beyond the main session.
+	if !sub.StartedAt.IsZero() && (main.StartedAt.IsZero() || sub.StartedAt.Before(main.StartedAt)) {
+		main.StartedAt = sub.StartedAt
+	}
+	if sub.EndedAt.After(main.EndedAt) {
+		main.EndedAt = sub.EndedAt
+	}
+	// Merge files_touched — preserve sort order.
+	existing := map[string]struct{}{}
+	for _, f := range main.FilesTouched {
+		existing[f] = struct{}{}
+	}
+	for _, f := range sub.FilesTouched {
+		existing[f] = struct{}{}
+	}
+	main.FilesTouched = sortedKeys(existing)
 }
 
 func sortedKeys(m map[string]struct{}) []string {

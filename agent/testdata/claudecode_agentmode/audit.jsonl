@@ -1,0 +1,7 @@
+{"type":"init","timestamp":"2026-06-04T11:00:00Z","init":{"session_id":"agentmode-fixture-1","apiKeySource":"none","model":"claude-opus-4-7","tools":["Read","Write","Bash"],"account":"alice@acme"}}
+{"type":"tool.use","timestamp":"2026-06-04T11:00:05Z","tool_use":{"name":"Read","input":{"file_path":"/repo/x.go"}}}
+{"type":"turn.complete","timestamp":"2026-06-04T11:00:10Z","turn":{"completedTurns":1,"usage":{"input_tokens":2000,"output_tokens":400,"cache_read_input_tokens":1000,"cache_creation_input_tokens":100}}}
+{"type":"tool.use","timestamp":"2026-06-04T11:00:30Z","tool_use":{"name":"Write","input":{"file_path":"/repo/y.go"}}}
+{"type":"turn.complete","timestamp":"2026-06-04T11:00:45Z","turn":{"completedTurns":2,"usage":{"input_tokens":2500,"output_tokens":500,"cache_read_input_tokens":1500,"cache_creation_input_tokens":0}}}
+this-line-is-malformed-and-should-be-skipped
+{"type":"turn.complete","timestamp":"2026-06-04T11:01:00Z","turn":{"completedTurns":3,"usage":{"input_tokens":3000,"output_tokens":600,"cache_read_input_tokens":2000,"cache_creation_input_tokens":0}}}
