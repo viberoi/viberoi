@@ -9,6 +9,12 @@ Slice 5A: real implementation. `CognitoNotImplemented` retained as a
 re-export so any caller still importing it gets a clean migration path.
 """
 
+from viberoi_shared.cognito.admin import (
+    InviteEmailAlreadyExists,
+    InviteError,
+    admin_create_invited_user,
+    admin_delete_user,
+)
 from viberoi_shared.cognito.verify import (
     CognitoClaims,
     CognitoNotImplemented,
@@ -22,6 +28,10 @@ __all__ = [
     "CognitoClaims",
     "CognitoNotImplemented",
     "CognitoVerificationError",
+    "InviteEmailAlreadyExists",
+    "InviteError",
+    "admin_create_invited_user",
+    "admin_delete_user",
     "reset_jwks_cache",
     "verify_jwt",
     "verify_jwt_basic",

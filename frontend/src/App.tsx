@@ -12,6 +12,7 @@ import { TicketDetail } from "./pages/TicketDetail";
 import { AuthCallback } from "./pages/AuthCallback";
 import { Settings } from "./pages/Settings";
 import { Profile } from "./pages/settings/Profile";
+import { Team } from "./pages/settings/Team";
 import { Integrations } from "./pages/settings/Integrations";
 import { Notifications } from "./pages/settings/Notifications";
 
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/settings" element={<Settings />}>
           <Route index element={<Navigate to="/settings/profile" replace />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="team" element={<Team />} />
           <Route path="integrations" element={<Integrations />} />
           <Route path="notifications" element={<Notifications />} />
         </Route>

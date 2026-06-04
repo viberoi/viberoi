@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from api.routes import (
     developers,
     health,
+    invitations,
     kpis,
     notification_channels,
     sessions,
@@ -50,6 +51,9 @@ def create_app() -> FastAPI:
         notification_channels.router,
         prefix="/notifications/channels",
         tags=["notifications"],
+    )
+    app.include_router(
+        invitations.router, prefix="/invitations", tags=["invitations"]
     )
     return app
 

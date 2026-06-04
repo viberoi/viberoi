@@ -269,4 +269,20 @@ export const api = {
 
   disableChannel: (channel: string) =>
     request<void>(`/notifications/channels/${channel}`, { method: "DELETE" }),
+
+  // ── Team invites ─────────────────────────────────────────────────────────
+  inviteTeammate: (email: string) =>
+    request<InviteResponse>(`/invitations`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      headers: { "Content-Type": "application/json" },
+    }),
 };
+
+export interface InviteResponse {
+  developer_id: string;
+  email: string;
+  role: string;
+  cognito_sub: string;
+  message: string;
+}

@@ -3,6 +3,7 @@ import { Title } from "@tremor/react";
 
 const subNav = [
   { to: "/settings/profile", label: "Profile" },
+  { to: "/settings/team", label: "Team" },
   { to: "/settings/integrations", label: "Integrations" },
   { to: "/settings/notifications", label: "Notifications" },
 ];

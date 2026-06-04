@@ -48,6 +48,20 @@ def _client_kwargs() -> dict[str, Any]:
     return kwargs
 
 
+def _real_aws_kwargs() -> dict[str, Any]:
+    """Like `_client_kwargs` but always hits real AWS — no LocalStack
+    override, no fake credentials. Used for services LocalStack doesn't
+    emulate well (Cognito) or that we deliberately keep on real AWS in
+    dev (the user pool itself). Credentials come from the default boto3
+    chain (env vars, ~/.aws/credentials, IAM role).
+    """
+    s = get_settings()
+    return {
+        "region_name": s.aws_region,
+        "config": _BOTO_CONFIG,
+    }
+
+
 @asynccontextmanager
 async def kms_client() -> AsyncIterator[Any]:
     async with _session().client("kms", **_client_kwargs()) as client:
@@ -74,10 +88,14 @@ async def secrets_client() -> AsyncIterator[Any]:
 
 @asynccontextmanager
 async def cognito_idp_client() -> AsyncIterator[Any]:
-    """Cognito User Pool admin API client.
+    """Cognito User Pool admin API client — ALWAYS real AWS.
 
-    Used by the PostConfirmation Lambda to set `custom:org_id`,
-    `custom:role`, `custom:team_id` on the user after row creation.
+    LocalStack Cognito support is paid-only and limited; we keep the
+    user pool on real AWS even in local dev (the only piece of the
+    stack that does). Uses the default boto3 credential chain.
+
+    Used for AdminCreateUser (invite flow), AdminDeleteUser (revoke),
+    and by the PostConfirmation Lambda to set custom attributes.
     """
-    async with _session().client("cognito-idp", **_client_kwargs()) as client:
+    async with _session().client("cognito-idp", **_real_aws_kwargs()) as client:
         yield client
