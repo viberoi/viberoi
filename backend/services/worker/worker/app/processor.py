@@ -7,6 +7,7 @@ import orjson
 
 from viberoi_shared.db import org_scoped_session
 from viberoi_shared.logging import bind_request_context, get_logger
+from viberoi_shared.pricing import compute_cost
 from viberoi_shared.redis import incr_cost_usd, incr_session_count
 from viberoi_shared.s3 import get_raw_session
 from viberoi_shared.sessions import upsert
@@ -43,6 +44,25 @@ async def process_s3_event(record: S3EventRecord) -> None:
 
     # Worker is the source of truth for attribution; agent's value is advisory.
     session = session.model_copy(update={"attribution": attribute(session)})
+
+    # Same for cost — agent sends 0 by design; reconcile here against the
+    # current rate table so dashboards reflect today's prices even if old
+    # sessions are reprocessed.
+    cost, estimated = compute_cost(
+        model=session.tool.model,
+        input_tokens=session.tokens.input,
+        output_tokens=session.tokens.output,
+        cache_read_tokens=session.tokens.cache_read,
+        cache_write_tokens=session.tokens.cache_write,
+        pricing_type=session.tool.pricing_model.type.value,
+    )
+    session = session.model_copy(
+        update={
+            "tokens": session.tokens.model_copy(
+                update={"total_cost_usd": cost, "is_estimated": estimated}
+            ),
+        }
+    )
 
     async with org_scoped_session(org_uuid) as db:
         row_id = await upsert(
