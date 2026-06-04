@@ -22,6 +22,7 @@ import (
 	"github.com/viberoi/viberoi/agent/pkg/schema"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode_agentmode"
+	"github.com/viberoi/viberoi/agent/pkg/sources/cursor"
 	"github.com/viberoi/viberoi/agent/pkg/state"
 )
 
@@ -126,16 +127,58 @@ func (r *Runner) Run(ctx context.Context) (Result, error) {
 		}
 	}
 
+	// ── Cursor (optional) ─────────────────────────────────────────────
+	// Cursor's storage is ONE SQLite file per install but N sessions
+	// per file. Read all, enumerate per composer.
+	if r.Cfg.CursorDBPath != "" {
+		cursorSessions, err := cursor.ReadAllSessions(r.Cfg.CursorDBPath)
+		if err != nil {
+			// Don't fail the whole run — a missing/broken Cursor DB is
+			// recoverable on next iteration.
+			r.Logger("cursor_read_failed", "error_type", typeName(err))
+		} else {
+			for i := range cursorSessions {
+				if ctx.Err() != nil {
+					return res, ctx.Err()
+				}
+				res.Discovered++
+				session, err := r.buildCursorSession(ctx, &cursorSessions[i])
+				if err != nil {
+					r.Logger("cursor_build_failed", "composer_id", cursorSessions[i].ComposerID, "error_type", typeName(err))
+					res.Failed++
+					continue
+				}
+				if err := r.pushIfNewCursor(ctx, session, &res); err != nil {
+					return res, err
+				}
+			}
+		}
+	}
+
 	return res, nil
 }
 
-// pushIfNew sends a session unless its id is already in state. Auth
-// failures surface to the caller (no retry). All other errors increment
-// the failed counter and continue.
+// pushIfNew sends a Claude Code session unless its id is already in
+// state. Auth failures surface to the caller (no retry). All other
+// errors increment the failed counter and continue.
 func (r *Runner) pushIfNew(
 	ctx context.Context, session *schema.Session, res *Result,
 ) error {
-	if r.State.Has(schema.ToolClaudeCode, session.SessionID) {
+	return r.pushIfNewForTool(ctx, session, schema.ToolClaudeCode, res)
+}
+
+// pushIfNewCursor — Cursor variant; state is keyed per-tool so a
+// composer_id colliding with a Claude Code session_id can't cross-deduplicate.
+func (r *Runner) pushIfNewCursor(
+	ctx context.Context, session *schema.Session, res *Result,
+) error {
+	return r.pushIfNewForTool(ctx, session, schema.ToolCursor, res)
+}
+
+func (r *Runner) pushIfNewForTool(
+	ctx context.Context, session *schema.Session, tool string, res *Result,
+) error {
+	if r.State.Has(tool, session.SessionID) {
 		res.Skipped++
 		return nil
 	}
@@ -145,14 +188,15 @@ func (r *Runner) pushIfNew(
 		}
 		r.Logger(
 			"session_push_failed",
+			"tool", tool,
 			"session_id", session.SessionID,
 			"error_type", typeName(err),
 		)
 		res.Failed++
 		return nil
 	}
-	if err := r.State.Mark(schema.ToolClaudeCode, session.SessionID); err != nil {
-		r.Logger("state_mark_failed", "session_id", session.SessionID)
+	if err := r.State.Mark(tool, session.SessionID); err != nil {
+		r.Logger("state_mark_failed", "tool", tool, "session_id", session.SessionID)
 	}
 	res.Pushed++
 	return nil
@@ -237,6 +281,49 @@ func (r *Runner) buildAgentModeSession(ctx context.Context, jsonlPath string) (*
 			schema.SourceGitDiff,
 		},
 	}), nil
+}
+
+// buildCursorSession takes one composer's parsed data and assembles a
+// Session envelope. Cursor sessions get tool=cursor, surface=
+// standalone_ide (Cursor's a VS Code fork shipped as a standalone app).
+func (r *Runner) buildCursorSession(ctx context.Context, cs *cursor.CursorSession) (*schema.Session, error) {
+	mode := mapCursorMode(cs.Mode)
+	s := r.assembleSession(ctx, sessionInputs{
+		SessionID:    cs.ComposerID,
+		Surface:      schema.SurfaceStandaloneIDE,
+		Model:        cs.Model,
+		StartedAt:    cs.StartedAt,
+		EndedAt:      cs.EndedAt,
+		Input:        cs.Tokens.Input,
+		Output:       cs.Tokens.Output,
+		TurnCount:    cs.TurnCount,
+		Mode:         mode,
+		IsAgentic:    cs.IsAgentic,
+		FilesTouched: cs.FilesTouched,
+		DataSources: []string{
+			schema.SourceLocalSQLite,
+			schema.SourceGitDiff,
+		},
+	})
+	// Patch the tool name — assembleSession defaults to Claude Code.
+	s.Tool.Name = schema.ToolCursor
+	// Cursor's refunded flag travels on the Quality block. The Worker
+	// treats refunded sessions specially in cost rollups.
+	s.Quality.IsRefunded = cs.IsRefunded
+	return s, nil
+}
+
+// mapCursorMode collapses Cursor's mode strings onto our SessionMode
+// enum. Cursor uses "chat", "agent", "edit", "ask"; anything else falls
+// back to "chat".
+func mapCursorMode(m string) string {
+	switch m {
+	case schema.ModeAgent, schema.ModeChat, schema.ModePlan,
+		schema.ModeEdit, schema.ModeAsk:
+		return m
+	default:
+		return schema.ModeChat
+	}
 }
 
 // sessionInputs aggregates everything assembleSession needs so the two

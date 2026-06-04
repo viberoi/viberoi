@@ -31,6 +31,9 @@ type Config struct {
 	// Root containing Claude Code AGENT MODE (Cowork) audit logs:
 	// `%APPDATA%\Claude\local-agent-mode-sessions\`. Empty = skip AGENT MODE.
 	ClaudeCodeAgentModePath string `yaml:"claude_code_agent_mode_path,omitempty"`
+	// Path to the Cursor SQLite file
+	// (`%APPDATA%\Cursor\User\globalStorage\state.vscdb`). Empty = skip Cursor.
+	CursorDBPath string `yaml:"cursor_db_path,omitempty"`
 }
 
 // Validate returns an error if any required field is missing.

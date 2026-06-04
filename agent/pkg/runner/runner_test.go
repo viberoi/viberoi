@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/viberoi/viberoi/agent/pkg/config"
 	"github.com/viberoi/viberoi/agent/pkg/state"
+
+	_ "modernc.org/sqlite"
 )
 
 // fixturePath copies the canonical claudecode fixture into a per-test
@@ -259,6 +262,110 @@ func TestBuildCLISession_EnvVarLandminFlipsPricing(t *testing.T) {
 	}
 	if s.Tool.PricingModel.Type != "api_key" {
 		t.Errorf("env-var ANTHROPIC_API_KEY should flip pricing to api_key, got %s", s.Tool.PricingModel.Type)
+	}
+}
+
+// ── Cursor ───────────────────────────────────────────────────────────────
+
+// buildCursorDB constructs a tiny Cursor state.vscdb at a temp path.
+// Mirrors the cursor package's own test fixture so we can integration-
+// test the runner's discovery + build paths.
+func buildCursorDB(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "state.vscdb")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=rwc")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)`); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	insert := func(key string, v any) {
+		raw, _ := json.Marshal(v)
+		if _, err := db.Exec(`INSERT INTO cursorDiskKV (key, value) VALUES (?, ?)`, key, raw); err != nil {
+			t.Fatalf("insert %s: %v", key, err)
+		}
+	}
+	insert("composerData:comp-cur-1", map[string]any{
+		"composerId":  "comp-cur-1",
+		"createdAt":   time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC).UnixMilli(),
+		"unifiedMode": "agent",
+		"isAgentic":   true,
+		"model":       "claude-3.7-sonnet",
+	})
+	insert("bubbleId:comp-cur-1:b1", map[string]any{
+		"tokenCount":     map[string]int{"inputTokens": 1500, "outputTokens": 600},
+		"toolFormerData": map[string]any{"name": "edit_file", "args": map[string]string{"file_path": "/repo/x.ts"}},
+	})
+	return path
+}
+
+func TestRun_PushesCursorSessions(t *testing.T) {
+	cliRoot := fixturePath(t)
+	cursorDB := buildCursorDB(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+
+	var seen atomic.Int32
+	var seenTools []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.Add(1)
+		// Capture the `tool.name` in the body to confirm both kinds reach the server.
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if tool, ok := body["tool"].(map[string]any); ok {
+			if name, ok := tool["name"].(string); ok {
+				seenTools = append(seenTools, name)
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	r := newRunner(t, statePath, cliRoot, srv.URL)
+	r.Cfg.CursorDBPath = cursorDB
+	r.Client.HTTP = srv.Client()
+
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// 1 Claude Code + 1 Cursor = 2 pushes.
+	if res.Pushed != 2 || res.Discovered != 2 {
+		t.Errorf("result: %+v", res)
+	}
+	if seen.Load() != 2 {
+		t.Errorf("expected 2 HTTP hits, got %d", seen.Load())
+	}
+	// Both tools present.
+	tools := map[string]bool{}
+	for _, t := range seenTools {
+		tools[t] = true
+	}
+	if !tools["claude-code"] || !tools["cursor"] {
+		t.Errorf("expected both claude-code + cursor; saw %v", seenTools)
+	}
+}
+
+func TestRun_CursorMissingDBLogsButDoesNotFail(t *testing.T) {
+	cliRoot := fixturePath(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	r := newRunner(t, statePath, cliRoot, srv.URL)
+	r.Cfg.CursorDBPath = filepath.Join(t.TempDir(), "nope.vscdb")
+	r.Client.HTTP = srv.Client()
+
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatalf("expected no error on missing cursor db, got %v", err)
+	}
+	// Only the Claude Code fixture should have been pushed.
+	if res.Pushed != 1 {
+		t.Errorf("expected 1 push, got %+v", res)
 	}
 }
 

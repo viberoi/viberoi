@@ -28,21 +28,32 @@ agent/
 
 ## Current scope
 
-- **One tool: Claude Code.** Two artifact kinds:
+- **Two tools: Claude Code + Cursor.**
+- **Claude Code** — two artifact kinds:
   - CLI `session.jsonl` + `subagents/agent-*.jsonl` — subagents folded
     into the parent session's totals.
   - AGENT MODE `audit.jsonl` (Cowork) — separate root, separate reader.
+- **Cursor** — single SQLite (`state.vscdb`) holds N composers; each
+  composer becomes one session. Tokens summed across bubbles, excluding
+  refunded ones (`isRefunded`). Files extracted from
+  `toolFormerData.args.file_path` / `path` / `target`. Modes
+  (`agent`/`chat`/`edit`) honored from composer's `unifiedMode`.
 - `ANTHROPIC_API_KEY` env-var detection (CLI path) + `apiKeySource`
   field detection (AGENT MODE path). Both flip the session's
   `tool.pricing_model.type` from `subscription` to `api_key` so the
   backend reconciler knows to bill at API rates.
-- Tracks `last_session_id + last_uploaded_at` per tool in `state.json`
-  so re-running `push` doesn't re-upload.
+- Cursor's `isRefunded` propagates to `Quality.IsRefunded` — backend
+  excludes refunded sessions from billed cost.
+- State keyed per-(tool, session_id) so Cursor `composerId` collisions
+  with Claude Code session ids don't cross-deduplicate.
 
 ## Deferred to V3
 
 - Reconciliation against the Anthropic Admin / Usage API.
-- Cursor / Kiro / Copilot / Windsurf / JetBrains readers.
+- Reconciliation against Cursor's usage API (via `usageUuid`).
+- `aiCodeTrackingLines` for native AI-code→commit attribution.
+- Cline-in-Cursor overlap dedup.
+- Kiro / Copilot / Windsurf / JetBrains readers.
 - Installer + service mode (Windows service / launchd / systemd).
 - Auto-update.
 
