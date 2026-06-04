@@ -100,13 +100,85 @@ export interface SessionListResponse {
   next_cursor: string | null;
 }
 
+export interface SessionDetail extends SessionSummary {
+  files_touched_count: number;
+  attribution_signals: string[];
+}
+
+export interface SprintSummary {
+  id: string;
+  system: string;
+  external_id: string;
+  name: string;
+  state: string;
+  started_at: string | null;
+  ended_at: string | null;
+  completed_at: string | null;
+  board_id: string | null;
+  ticket_count: number;
+}
+
+export interface SprintListResponse {
+  items: SprintSummary[];
+}
+
+export interface SprintDetail extends SprintSummary {
+  total_cost_usd: string;
+  total_sessions: number;
+}
+
+export interface TicketDetail {
+  id: string;
+  system: string;
+  external_id: string;
+  title: string;
+  status: string;
+  sprint_id: string | null;
+  assignee_developer_id: string | null;
+  story_points: string | null;
+  priority: string | null;
+  created_at_external: string;
+  closed_at_external: string | null;
+  total_sessions: number;
+  total_cost_usd: string;
+}
+
+export interface DeveloperProfile {
+  id: string;
+  org_id: string;
+  role: string;
+  team_id: string | null;
+  email: string;
+  github_username: string | null;
+  agent_status: string;
+  created_at: string;
+  last_active_at: string | null;
+}
+
 export const api = {
   kpiSnapshot: (windowDays = 30) =>
     request<KpiSnapshot>(`/kpis/snapshot?window_days=${windowDays}`),
+
   listSessions: (cursor?: string, limit = 50) => {
     const q = new URLSearchParams();
     if (cursor) q.set("cursor", cursor);
     q.set("limit", String(limit));
     return request<SessionListResponse>(`/sessions?${q.toString()}`);
   },
+
+  getSession: (id: string) => request<SessionDetail>(`/sessions/${id}`),
+
+  // Sprint state filter is repeated for each value Cognito-quoted URLs.
+  listSprints: (states?: string[]) => {
+    const q = new URLSearchParams();
+    states?.forEach((s) => q.append("state", s));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<SprintListResponse>(`/sprints${suffix}`);
+  },
+
+  getSprint: (id: string) => request<SprintDetail>(`/sprints/${id}`),
+
+  getTicket: (id: string) => request<TicketDetail>(`/tickets/${id}`),
+
+  me: () => request<DeveloperProfile>(`/developers/me`),
 };

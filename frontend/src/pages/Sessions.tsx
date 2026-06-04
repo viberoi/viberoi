@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Card, Text, Title } from "@tremor/react";
 
@@ -108,8 +109,12 @@ function Th({
 }
 
 function Row({ session }: { session: SessionSummary }) {
+  const nav = useNavigate();
   return (
-    <tr className="border-b border-white/5 hover:bg-white/5">
+    <tr
+      className="border-b border-white/5 hover:bg-white/5 cursor-pointer"
+      onClick={() => nav(`/sessions/${session.id}`)}
+    >
       <td className="px-4 py-3 font-mono text-xs">
         {new Date(session.started_at).toLocaleString()}
       </td>

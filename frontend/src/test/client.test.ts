@@ -54,4 +54,58 @@ describe("api client", () => {
     const [url] = fetchSpy.mock.calls[0]!;
     expect(String(url)).toBe("/api/sessions?cursor=abc123&limit=10");
   });
+
+  it("GET /sessions/:id", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    await api.getSession("sess-uuid");
+    expect(String(spy.mock.calls[0]![0])).toBe("/api/sessions/sess-uuid");
+  });
+
+  it("/sprints with no states omits query string", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ items: [] }), { status: 200 }),
+      );
+    await api.listSprints();
+    expect(String(spy.mock.calls[0]![0])).toBe("/api/sprints");
+  });
+
+  it("/sprints repeats state per filter", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ items: [] }), { status: 200 }),
+      );
+    await api.listSprints(["active", "future"]);
+    expect(String(spy.mock.calls[0]![0])).toBe(
+      "/api/sprints?state=active&state=future",
+    );
+  });
+
+  it("GET /sprints/:id", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    await api.getSprint("sp-uuid");
+    expect(String(spy.mock.calls[0]![0])).toBe("/api/sprints/sp-uuid");
+  });
+
+  it("GET /tickets/:id", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    await api.getTicket("t-uuid");
+    expect(String(spy.mock.calls[0]![0])).toBe("/api/tickets/t-uuid");
+  });
+
+  it("GET /developers/me", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    await api.me();
+    expect(String(spy.mock.calls[0]![0])).toBe("/api/developers/me");
+  });
 });

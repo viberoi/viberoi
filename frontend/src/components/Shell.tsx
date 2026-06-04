@@ -1,11 +1,20 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, ListTree, LogOut, Zap } from "lucide-react";
+import {
+  LayoutDashboard,
+  ListTree,
+  LogOut,
+  Settings as SettingsIcon,
+  Target,
+  Zap,
+} from "lucide-react";
 
 import { useAuth } from "../auth/AuthContext";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/sessions", label: "Sessions", Icon: ListTree },
+  { to: "/sprints", label: "Sprints", Icon: Target },
+  { to: "/settings", label: "Settings", Icon: SettingsIcon },
 ];
 
 export function Shell() {
