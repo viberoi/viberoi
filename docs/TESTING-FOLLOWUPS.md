@@ -51,6 +51,14 @@ as you exercise each flow in a real browser / real shell.
   terraform resource. Limited (Cognito allows ~30 selectors only) but
   goes from default-AWS to branded in ~30 min.
 
+## Image size optimization
+
+- [ ] Container images are 380–430MB per service (Lambda webhook 963MB).
+  Most of that is `cryptography` + `aioboto3` + `httpx`. Worth a pass to
+  switch to `python:3.12-alpine` base + slim down to ~150MB per service.
+  Cold-start matters for Lambda; ECS tasks less so. Defer until images
+  hit billing thresholds.
+
 ## After deploy
 
 These need redoing once the API + frontend are on a real URL:
