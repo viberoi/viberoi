@@ -168,6 +168,13 @@ class Session(BaseModel):
     session_id: str
     developer_id: str
     org_id: str
+    # Stable per-machine sha256 hex from `viberoi-agent/pkg/machineid`.
+    # Worker copies this to `developers.machine_id_hash` on first push
+    # from a given developer; subsequent pushes from a different machine
+    # signal cross-device reuse (per-active-device billing input).
+    # Optional for backward compatibility with v1.0 agents that don't yet
+    # emit it — defaults to empty string.
+    machine_id: str = ""
 
     tool: ToolInfo
     timing: Timing

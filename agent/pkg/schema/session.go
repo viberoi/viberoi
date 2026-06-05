@@ -167,6 +167,11 @@ type Session struct {
 	SessionID   string `json:"session_id"`
 	DeveloperID string `json:"developer_id"`
 	OrgID       string `json:"org_id"`
+	// Stable per-machine hex hash from `viberoi-agent/pkg/machineid`.
+	// Backend writes it to `developers.machine_id_hash` on first push
+	// for this developer; subsequent pushes from a different machine
+	// flag cross-device reuse for the active-device meter.
+	MachineID string `json:"machine_id"`
 
 	Tool        ToolInfo    `json:"tool"`
 	Timing      Timing      `json:"timing"`

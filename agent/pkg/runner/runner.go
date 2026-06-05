@@ -20,6 +20,7 @@ import (
 	"github.com/viberoi/viberoi/agent/pkg/config"
 	"github.com/viberoi/viberoi/agent/pkg/git"
 	"github.com/viberoi/viberoi/agent/pkg/ingest"
+	"github.com/viberoi/viberoi/agent/pkg/machineid"
 	"github.com/viberoi/viberoi/agent/pkg/schema"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode_agentmode"
@@ -42,11 +43,12 @@ type Result struct {
 // Runner is the top-level orchestrator. Constructed by the CLI from
 // loaded config + opened state.
 type Runner struct {
-	Cfg    *config.Config
-	State  *state.Store
-	Client *ingest.Client
-	Now    func() time.Time // injectable for tests
-	Logger func(string, ...any)
+	Cfg       *config.Config
+	State     *state.Store
+	Client    *ingest.Client
+	MachineID string // cached at construction; same for every session
+	Now       func() time.Time // injectable for tests
+	Logger    func(string, ...any)
 }
 
 // New builds a Runner with sensible defaults.
@@ -61,8 +63,9 @@ func New(cfg *config.Config, st *state.Store) *Runner {
 			DeveloperID: cfg.DeveloperID,
 			UserAgent:   "viberoi-agent/" + AgentVersion,
 		},
-		Now:    time.Now,
-		Logger: func(msg string, kv ...any) { fmt.Println(append([]any{msg}, kv...)...) },
+		MachineID: machineid.Get(),
+		Now:       time.Now,
+		Logger:    func(msg string, kv ...any) { fmt.Println(append([]any{msg}, kv...)...) },
 	}
 }
 
@@ -373,6 +376,7 @@ func (r *Runner) assembleSession(ctx context.Context, in sessionInputs) *schema.
 		SessionID:   in.SessionID,
 		DeveloperID: r.Cfg.DeveloperID,
 		OrgID:       r.Cfg.OrgID,
+		MachineID:   r.MachineID,
 		Tool: schema.ToolInfo{
 			Name:        schema.ToolClaudeCode,
 			Surface:     in.Surface,

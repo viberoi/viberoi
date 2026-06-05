@@ -4,6 +4,7 @@ import gzip
 from uuid import UUID
 
 import orjson
+from sqlalchemy import text
 
 from viberoi_shared.db import org_scoped_session
 from viberoi_shared.logging import bind_request_context, get_logger
@@ -68,6 +69,27 @@ async def process_s3_event(record: S3EventRecord) -> None:
         row_id = await upsert(
             db, session, developer_uuid=developer_uuid, org_uuid=org_uuid
         )
+        # On first push from this developer, persist their machine
+        # fingerprint so the active-device meter has a value. Only
+        # writes when the column is still NULL — switching machines is
+        # a separate concern (a future "devices" join table will track
+        # the full set).
+        if session.machine_id:
+            try:
+                fingerprint = bytes.fromhex(session.machine_id)
+                await db.execute(
+                    text(
+                        "UPDATE developers SET machine_id_hash = :h "
+                        "WHERE id = :id AND machine_id_hash IS NULL"
+                    ),
+                    {"h": fingerprint, "id": str(developer_uuid)},
+                )
+            except ValueError:
+                # Agent sent a non-hex machine_id — log and continue.
+                logger.warning(
+                    "machine_id_not_hex",
+                    developer_id=str(developer_uuid),
+                )
 
     # Live KPI counters for the dashboard. Reconciled from Postgres
     # hourly via the snapshot cron (Slice 6).
