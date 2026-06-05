@@ -49,6 +49,7 @@ resource "aws_elasticache_replication_group" "this" {
   num_cache_clusters         = var.num_cache_clusters
   automatic_failover_enabled = var.num_cache_clusters > 1
   multi_az_enabled           = var.num_cache_clusters > 1
+  port                       = 6379
 
   subnet_group_name  = aws_elasticache_subnet_group.this.name
   security_group_ids = var.security_group_ids

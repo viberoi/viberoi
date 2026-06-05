@@ -887,9 +887,13 @@ output "cognito_custom_domain_target" {
 }
 
 # Convenient summary of DNS records you need to add at Hostinger.
+# Both branches return a map so terraform can plan a consistent type;
+# when `var.domain` is unset the map carries a single explanatory entry.
 output "hostinger_dns_records_needed" {
   description = "Human-readable summary of every DNS record the user needs to add. Lists only the records relevant to the currently-enabled toggles."
-  value = var.domain == "" ? "set var.domain to see DNS records" : merge(
+  value = var.domain == "" ? {
+    "set var.domain to see DNS records" = ""
+    } : merge(
     {
       "ACM validation (one CNAME per name in the cert, see acm_validation_records output)" = "see acm_validation_records output"
     },
