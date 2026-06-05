@@ -53,15 +53,51 @@ class SessionListResponse(BaseModel):
 
 
 class SessionDetail(SessionSummary):
-    """`GET /sessions/{id}` — same shape as summary plus a few rollups.
+    """`GET /sessions/{id}` — summary + everything else the dashboard renders.
 
-    Stays metadata-only per the privacy rule.
+    Stays metadata-only per the privacy rule: file PATHS are OK, file
+    contents are not. Token counts + cost are numbers. No prompts, no
+    completions, no commit-message bodies.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    files_touched_count: int
+    # Token breakdown
+    tokens_input: int
+    tokens_output: int
+    tokens_cache_read: int
+    tokens_cache_write: int
+    is_estimated: bool
+
+    # Activity
+    turn_count: int
+    subagent_count: int
+    mode: str
+    is_agentic: bool
+
+    # Code output (numbers only, no diffs)
+    lines_added: int
+    lines_deleted: int
+    is_committed: bool
+    commit_count: int
+
+    # Quality signals (deferred fields default to None; populated when
+    # Worker has the per-turn token series)
+    session_restarts: int | None
+    file_oscillations: int | None
+
+    # Attribution
     attribution_signals: list[str]
+    attribution_confidence: float | None
+    attribution_method: str | None
+
+    # Files touched (PATHS only — privacy-safe)
+    files_touched_count: int
+    files_touched: list[str]
+
+    # Repo context
+    repo_name: str | None
+    repo_cwd: str | None
 
 
 # ── Sprints ────────────────────────────────────────────────────────────────

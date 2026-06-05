@@ -110,8 +110,28 @@ export interface SessionListResponse {
 }
 
 export interface SessionDetail extends SessionSummary {
-  files_touched_count: number;
+  tokens_input: number;
+  tokens_output: number;
+  tokens_cache_read: number;
+  tokens_cache_write: number;
+  is_estimated: boolean;
+  turn_count: number;
+  subagent_count: number;
+  mode: string;
+  is_agentic: boolean;
+  lines_added: number;
+  lines_deleted: number;
+  is_committed: boolean;
+  commit_count: number;
+  session_restarts: number | null;
+  file_oscillations: number | null;
   attribution_signals: string[];
+  attribution_confidence: number | null;
+  attribution_method: string | null;
+  files_touched_count: number;
+  files_touched: string[];
+  repo_name: string | null;
+  repo_cwd: string | null;
 }
 
 export interface SprintSummary {

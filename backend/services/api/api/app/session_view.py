@@ -41,6 +41,34 @@ def to_summary(row: SessionRow) -> SessionSummary:
 
 def to_detail(row: SessionRow) -> SessionDetail:
     base = _to_summary_dict(row)
-    base["files_touched_count"] = row.files_touched_count
-    base["attribution_signals"] = list(row.attr_signals or [])
+    base.update(
+        {
+            "tokens_input": row.tokens_input,
+            "tokens_output": row.tokens_output,
+            "tokens_cache_read": row.tokens_cache_read,
+            "tokens_cache_write": row.tokens_cache_write,
+            "is_estimated": row.is_estimated,
+            "turn_count": row.turn_count,
+            "subagent_count": row.subagent_count,
+            "mode": row.mode,
+            "is_agentic": row.is_agentic,
+            "lines_added": row.lines_added,
+            "lines_deleted": row.lines_deleted,
+            "is_committed": row.is_committed,
+            "commit_count": len(row.commit_hashes or []),
+            "session_restarts": row.quality_session_restarts,
+            "file_oscillations": row.quality_file_oscillations,
+            "attribution_signals": list(row.attr_signals or []),
+            "attribution_confidence": (
+                float(row.attr_confidence)
+                if row.attr_confidence is not None
+                else None
+            ),
+            "attribution_method": row.attr_method,
+            "files_touched_count": row.files_touched_count,
+            "files_touched": list(row.files_touched or []),
+            "repo_name": row.repo_name,
+            "repo_cwd": row.repo_origin_cwd,
+        }
+    )
     return SessionDetail.model_validate(base)

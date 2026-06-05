@@ -35,12 +35,30 @@ def _fake_row(
     row.ended_at = (started_at or datetime.now(tz=UTC)) + timedelta(minutes=20)
     row.tokens_input = 5000
     row.tokens_output = 1000
+    row.tokens_cache_read = 0
+    row.tokens_cache_write = 0
     row.total_cost_usd = Decimal("0.42")
+    row.is_estimated = False
     row.attr_ticket_id = "ABC-42"
     row.attr_signals = ["branch_parse"]
+    row.attr_confidence = Decimal("0.85")
+    row.attr_method = "signals_v1"
     row.repo_branch = "feature/foo"
+    row.repo_name = "demo-repo"
+    row.repo_origin_cwd = "/tmp/demo-repo"
     row.schema_version = "1.0"
     row.files_touched_count = 3
+    row.files_touched = ["src/a.py", "src/b.py", "src/c.py"]
+    row.turn_count = 12
+    row.subagent_count = 0
+    row.mode = "agent"
+    row.is_agentic = True
+    row.lines_added = 50
+    row.lines_deleted = 10
+    row.is_committed = True
+    row.commit_hashes = ["abc1234"]
+    row.quality_session_restarts = 0
+    row.quality_file_oscillations = 0
     return row
 
 

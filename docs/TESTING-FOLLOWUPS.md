@@ -38,6 +38,19 @@ as you exercise each flow in a real browser / real shell.
   Verify whether these turns should be counted at all (they may be local-only
   with no real cost).
 
+## UI debt — known rough edges
+
+- [ ] **Custom login page** — Cognito Hosted UI is the default red-on-white
+  AWS look and feels off-brand. Replace with our own form using direct
+  Cognito InitiateAuth + the user pool's USER_PASSWORD_AUTH flow (or
+  AWS Amplify Auth). Covers: signin, signup, email verify, MFA, password
+  reset. Estimated 4–6 hours. Until then, the Hosted UI works but looks
+  poor.
+- [ ] **Cognito Hosted UI CSS customization** — quick stopgap: upload
+  dark-theme CSS + VibeROI logo via `aws_cognito_user_pool_ui_customization`
+  terraform resource. Limited (Cognito allows ~30 selectors only) but
+  goes from default-AWS to branded in ~30 min.
+
 ## After deploy
 
 These need redoing once the API + frontend are on a real URL:
