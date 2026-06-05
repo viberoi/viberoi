@@ -134,6 +134,45 @@ func firstIntOf(s string) int {
 	return n
 }
 
+// FirstCommitTimeSince returns the timestamp of the EARLIEST commit
+// authored after `since`. Zero time + nil if there are no commits.
+// Used to compute Timing.time_to_first_commit_min for a session.
+func FirstCommitTimeSince(ctx context.Context, dir string, since time.Time) (time.Time, error) {
+	// --reverse + --max-count=1 gives the oldest commit in the window.
+	out, err := runGit(ctx, dir,
+		"log",
+		"--reverse",
+		"--pretty=format:%aI",
+		"--since="+since.UTC().Format(time.RFC3339),
+		"--max-count=1",
+	)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if out == "" {
+		return time.Time{}, nil
+	}
+	t, parseErr := time.Parse(time.RFC3339, out)
+	if parseErr != nil {
+		return time.Time{}, fmt.Errorf("git: cannot parse commit time %q: %w", out, parseErr)
+	}
+	return t, nil
+}
+
+// IsDirty returns true when the working tree has uncommitted changes
+// (staged, unstaged, or untracked). Used to populate
+// CodeOutput.uncommitted_at_end when a session window closes.
+//
+// `git status --porcelain` exits 0 either way; non-empty output means
+// dirty. Returns (false, err) on git invocation failure.
+func IsDirty(ctx context.Context, dir string) (bool, error) {
+	out, err := runGit(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return out != "", nil
+}
+
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir

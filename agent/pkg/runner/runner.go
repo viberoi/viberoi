@@ -351,14 +351,32 @@ func (r *Runner) assembleSession(ctx context.Context, in sessionInputs) *schema.
 	repo, _ := git.Inspect(ctx, cwd)
 	var commits []string
 	loc := git.LOCDiff{}
+	var firstCommitAt time.Time
+	uncommittedAtEnd := false
 	if repo != nil && !in.StartedAt.IsZero() {
 		commits, _ = git.CommitsSince(ctx, repo.OriginCWD, in.StartedAt, 50)
 		loc, _ = git.LOCSince(ctx, repo.OriginCWD, in.StartedAt)
+		firstCommitAt, _ = git.FirstCommitTimeSince(ctx, repo.OriginCWD, in.StartedAt)
+		uncommittedAtEnd, _ = git.IsDirty(ctx, repo.OriginCWD)
 	}
 
 	durMin := int(in.EndedAt.Sub(in.StartedAt).Minutes())
 	if durMin < 0 {
 		durMin = 0
+	}
+
+	// time_to_first_commit: minutes from session start to earliest commit
+	// in the window. Nil when there's no commit yet (no signal to derive).
+	var firstCommitPtr *time.Time
+	var ttfcPtr *int
+	if !firstCommitAt.IsZero() {
+		fca := firstCommitAt
+		firstCommitPtr = &fca
+		mins := int(firstCommitAt.Sub(in.StartedAt).Minutes())
+		if mins < 0 {
+			mins = 0
+		}
+		ttfcPtr = &mins
 	}
 
 	// Pricing: subscription unless we detect the API-key landmine.
@@ -390,9 +408,11 @@ func (r *Runner) assembleSession(ctx context.Context, in sessionInputs) *schema.
 			},
 		},
 		Timing: schema.Timing{
-			StartedAt:         in.StartedAt,
-			EndedAt:           in.EndedAt,
-			ActiveDurationMin: durMin,
+			StartedAt:            in.StartedAt,
+			EndedAt:              in.EndedAt,
+			ActiveDurationMin:    durMin,
+			FirstCommitAt:        firstCommitPtr,
+			TimeToFirstCommitMin: ttfcPtr,
 		},
 		Tokens: schema.Tokens{
 			Input:        in.Input,
@@ -411,10 +431,11 @@ func (r *Runner) assembleSession(ctx context.Context, in sessionInputs) *schema.
 			FilesTouchedCount: len(in.FilesTouched),
 		},
 		CodeOutput: schema.CodeOutput{
-			LinesAdded:   loc.LinesAdded,
-			LinesDeleted: loc.LinesDeleted,
-			IsCommitted:  len(commits) > 0,
-			CommitHashes: commits,
+			LinesAdded:       loc.LinesAdded,
+			LinesDeleted:     loc.LinesDeleted,
+			IsCommitted:      len(commits) > 0,
+			CommitHashes:     commits,
+			UncommittedAtEnd: uncommittedAtEnd,
 		},
 		Repository: schema.Repository{
 			Name:       repoName(repo),
