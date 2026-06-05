@@ -3,7 +3,7 @@ output "function_name" {
 }
 
 output "function_arn" {
-  description = "ARN — passed to Cognito user pool `lambda_config`, API Gateway integrations, etc."
+  description = "ARN - passed to Cognito user pool `lambda_config`, API Gateway integrations, etc."
   value       = aws_lambda_function.this.arn
 }
 

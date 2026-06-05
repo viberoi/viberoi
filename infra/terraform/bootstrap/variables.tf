@@ -1,7 +1,7 @@
 variable "project" {
   type        = string
   default     = "viberoi"
-  description = "Project name — used to prefix all resources."
+  description = "Project name - used to prefix all resources."
 }
 
 variable "region" {

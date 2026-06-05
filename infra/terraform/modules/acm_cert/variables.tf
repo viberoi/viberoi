@@ -10,7 +10,7 @@ variable "env" {
 
 variable "domain" {
   type        = string
-  description = "Apex domain — e.g. viberoi.io. Cert covers this + SANs."
+  description = "Apex domain - e.g. viberoi.io. Cert covers this + SANs."
 }
 
 variable "subject_alternative_names" {

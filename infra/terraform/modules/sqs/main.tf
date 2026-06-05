@@ -2,12 +2,12 @@
 #
 # Queue names MUST exactly match what application code passes to
 # viberoi_shared.sqs.publish(<name>, ...) since the queue URL is looked
-# up by name. Don't prefix here — the Python code uses bare names.
+# up by name. Don't prefix here - the Python code uses bare names.
 
 locals {
   prefix = "${var.project}-${var.env}"
 
-  # Bare queue names — no env prefix, see comment above.
+  # Bare queue names - no env prefix, see comment above.
   queues = {
     session_ingest    = "session_ingest"
     webhook_events    = "webhook_events"

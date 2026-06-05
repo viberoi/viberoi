@@ -1,10 +1,10 @@
 output "endpoint" {
-  description = "host:port — used in DATABASE_URL."
+  description = "host:port - used in DATABASE_URL."
   value       = aws_db_instance.this.endpoint
 }
 
 output "address" {
-  description = "Hostname only — convenient for constructing URLs without port."
+  description = "Hostname only - convenient for constructing URLs without port."
   value       = aws_db_instance.this.address
 }
 

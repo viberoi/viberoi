@@ -1,4 +1,4 @@
-# Terraform bootstrap — state bucket + lock table.
+# Terraform bootstrap - state bucket + lock table.
 #
 # Apply ONCE per AWS account using local state. After it succeeds, every
 # other Terraform module uses the bucket created here as remote state.
@@ -16,7 +16,7 @@ terraform {
     }
   }
 
-  # NOT configured: backend "s3" — this module creates that bucket.
+  # NOT configured: backend "s3" - this module creates that bucket.
 }
 
 provider "aws" {

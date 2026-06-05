@@ -4,7 +4,7 @@
 # rules reference SG ids, not CIDRs, so a subnet-CIDR change in the VPC
 # doesn't ripple into SG rules.
 #
-# Egress is `0.0.0.0/0` by default — services need to reach the
+# Egress is `0.0.0.0/0` by default - services need to reach the
 # internet (Cognito, KMS, Slack, etc.) via the NAT gateway. Inbound is
 # strictly scoped.
 #
@@ -26,10 +26,10 @@ locals {
 }
 
 # ── ALB ─────────────────────────────────────────────────────────────────────
-# Public-facing — accepts 80 + 443 from anywhere; 80 redirects to 443.
+# Public-facing - accepts 80 + 443 from anywhere; 80 redirects to 443.
 resource "aws_security_group" "alb" {
   name        = "${local.prefix}-sg-alb"
-  description = "Public ALB — accepts 80/443 from anywhere."
+  description = "Public ALB - accepts 80/443 from anywhere."
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-sg-alb" })
@@ -67,11 +67,11 @@ resource "aws_vpc_security_group_egress_rule" "alb_all" {
 # ── ECS services ───────────────────────────────────────────────────────────
 # All Fargate tasks (ingest, api, integration, worker, notification) live
 # behind one SG. Containers expose 8001–8003 on their tasks; the ALB
-# targets those ports per service. Internal — accepts inbound only from
+# targets those ports per service. Internal - accepts inbound only from
 # the ALB SG.
 resource "aws_security_group" "services" {
   name        = "${local.prefix}-sg-services"
-  description = "ECS Fargate services — inbound from ALB only."
+  description = "ECS Fargate services - inbound from ALB only."
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-sg-services" })
@@ -83,7 +83,7 @@ resource "aws_security_group" "services" {
 
 resource "aws_vpc_security_group_ingress_rule" "services_from_alb" {
   security_group_id            = aws_security_group.services.id
-  description                  = "All container ports — ALB targets pick the port per service."
+  description                  = "All container ports - ALB targets pick the port per service."
   ip_protocol                  = "tcp"
   from_port                    = 8000
   to_port                      = 8999
@@ -92,7 +92,7 @@ resource "aws_vpc_security_group_ingress_rule" "services_from_alb" {
 
 resource "aws_vpc_security_group_egress_rule" "services_all" {
   security_group_id = aws_security_group.services.id
-  description       = "Outbound — Cognito, KMS, S3, SQS, Slack, etc. via NAT."
+  description       = "Outbound - Cognito, KMS, S3, SQS, Slack, etc. via NAT."
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
@@ -102,7 +102,7 @@ resource "aws_vpc_security_group_egress_rule" "services_all" {
 # No inbound; egress same as services.
 resource "aws_security_group" "lambda" {
   name        = "${local.prefix}-sg-lambda"
-  description = "VPC-attached Lambdas — no inbound, full egress."
+  description = "VPC-attached Lambdas - no inbound, full egress."
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-sg-lambda" })
@@ -114,7 +114,7 @@ resource "aws_security_group" "lambda" {
 
 resource "aws_vpc_security_group_egress_rule" "lambda_all" {
   security_group_id = aws_security_group.lambda.id
-  description       = "Outbound — RDS, KMS, SQS via NAT or endpoints."
+  description       = "Outbound - RDS, KMS, SQS via NAT or endpoints."
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
@@ -123,7 +123,7 @@ resource "aws_vpc_security_group_egress_rule" "lambda_all" {
 # Postgres 5432. Inbound from services + lambda SGs only.
 resource "aws_security_group" "rds" {
   name        = "${local.prefix}-sg-rds"
-  description = "RDS Postgres — inbound 5432 from services + lambda."
+  description = "RDS Postgres - inbound 5432 from services + lambda."
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-sg-rds" })
@@ -151,10 +151,10 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_lambda" {
   referenced_security_group_id = aws_security_group.lambda.id
 }
 
-# Egress none — DB doesn't initiate outbound.
+# Egress none - DB doesn't initiate outbound.
 resource "aws_vpc_security_group_egress_rule" "rds_none" {
   security_group_id = aws_security_group.rds.id
-  description       = "No egress — DB doesn't initiate connections."
+  description       = "No egress - DB doesn't initiate connections."
   ip_protocol       = "-1"
   cidr_ipv4         = "127.0.0.1/32"
 }
@@ -163,7 +163,7 @@ resource "aws_vpc_security_group_egress_rule" "rds_none" {
 # ElastiCache 6379. Inbound from services + lambda SGs only.
 resource "aws_security_group" "redis" {
   name        = "${local.prefix}-sg-redis"
-  description = "ElastiCache Redis — inbound 6379 from services + lambda."
+  description = "ElastiCache Redis - inbound 6379 from services + lambda."
   vpc_id      = var.vpc_id
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-sg-redis" })

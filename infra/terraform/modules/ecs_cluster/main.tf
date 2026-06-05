@@ -1,6 +1,6 @@
 # ECS Fargate cluster.
 #
-# One cluster per env. Container Insights is on — gives us per-task
+# One cluster per env. Container Insights is on - gives us per-task
 # CPU/memory/network metrics in CloudWatch for the alarms in 6F.
 # Capacity providers: FARGATE (always-on) + FARGATE_SPOT (cheaper for
 # workers that tolerate eviction; defer using it until prod).

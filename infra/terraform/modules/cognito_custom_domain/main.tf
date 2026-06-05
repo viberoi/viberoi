@@ -5,7 +5,7 @@
 #   - Cert must be ISSUED at apply time (not just requested).
 #   - The parent domain (apex) must have an A record at Cognito's parent
 #     domain check. For subdomains like `auth.viberoi.io`, AWS verifies
-#     `viberoi.io` has SOA / NS records — which it always will if you
+#     `viberoi.io` has SOA / NS records - which it always will if you
 #     own the domain.
 #
 # After apply: CNAME `domain` → `cloudfront_distribution` (output below)

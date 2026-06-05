@@ -36,7 +36,7 @@ variable "services" {
     container_port = number
     health_path    = string
     # Path patterns the rule matches. The DEFAULT target group is named
-    # "api" by convention — everything that doesn't match another rule
+    # "api" by convention - everything that doesn't match another rule
     # falls through to api.
     path_patterns = list(string)
     priority      = number

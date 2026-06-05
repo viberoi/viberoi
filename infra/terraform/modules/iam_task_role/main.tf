@@ -1,14 +1,14 @@
 # Per-service IAM task role.
 #
 # Returns two roles per call:
-#   - execution_role — used by ECS to pull the image, write to
+#   - execution_role - used by ECS to pull the image, write to
 #     CloudWatch logs, and decrypt Secrets Manager refs in the task
 #     definition's `secrets` block.
-#   - task_role — used by the *running container* for KMS, SQS, S3,
+#   - task_role - used by the *running container* for KMS, SQS, S3,
 #     Cognito, etc. Scoped per `service_name`.
 #
 # Lambdas reuse this module by passing `assume_role_service = "lambda.amazonaws.com"`
-# — the same scoped policy shape applies.
+# - the same scoped policy shape applies.
 
 locals {
   prefix = "${var.project}-${var.env}-${var.service_name}"
@@ -95,9 +95,9 @@ resource "aws_iam_role" "task" {
   tags               = local.common_tags
 }
 
-# Aggregate scoped policy — everything the service can do at runtime.
+# Aggregate scoped policy - everything the service can do at runtime.
 data "aws_iam_policy_document" "task" {
-  # KMS — always (every service touches encrypted columns at some point).
+  # KMS - always (every service touches encrypted columns at some point).
   statement {
     sid    = "KMSEnvelope"
     effect = "Allow"
@@ -111,7 +111,7 @@ data "aws_iam_policy_document" "task" {
     resources = [var.kms_key_arn]
   }
 
-  # Secrets Manager — runtime reads (`viberoi_shared.secrets.get`).
+  # Secrets Manager - runtime reads (`viberoi_shared.secrets.get`).
   dynamic "statement" {
     for_each = length(var.secret_arns) > 0 ? [1] : []
     content {
@@ -190,7 +190,7 @@ data "aws_iam_policy_document" "task" {
     }
   }
 
-  # Cognito admin — only the PostConfirmation Lambda needs this.
+  # Cognito admin - only the PostConfirmation Lambda needs this.
   dynamic "statement" {
     for_each = var.cognito_user_pool_arn != null ? [1] : []
     content {

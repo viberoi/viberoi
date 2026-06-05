@@ -1,14 +1,14 @@
 # CloudFront distribution fronting the frontend S3 bucket.
 #
-# - Origin Access Control (OAC) — newer than OAI. Distribution signs
+# - Origin Access Control (OAC) - newer than OAI. Distribution signs
 #   the S3 request; bucket policy allows reads only from this dist.
 # - SPA fallback: 403/404 → /index.html with 200. Vite + React Router
 #   handles the rest client-side.
-# - HTTPS only — Redirect HTTP to HTTPS via viewer_protocol_policy.
+# - HTTPS only - Redirect HTTP to HTTPS via viewer_protocol_policy.
 # - Compress responses. Default cache + origin request policies
 #   (we don't need fine-grained tuning yet).
 #
-# Custom domain requires ACM cert in us-east-1 — CloudFront's hard
+# Custom domain requires ACM cert in us-east-1 - CloudFront's hard
 # requirement. We're already in us-east-1 so it's the same provider.
 
 locals {
@@ -41,8 +41,8 @@ resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  price_class         = "PriceClass_100" # US/EU edges only — cheapest
-  comment             = "${local.prefix} — frontend"
+  price_class         = "PriceClass_100" # US/EU edges only - cheapest
+  comment             = "${local.prefix} - frontend"
   aliases             = var.aliases
 
   origin {
@@ -62,7 +62,7 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
   }
 
-  # SPA fallback — Vite/React Router owns the URL space client-side.
+  # SPA fallback - Vite/React Router owns the URL space client-side.
   custom_error_response {
     error_code         = 403
     response_code      = 200
@@ -91,7 +91,7 @@ resource "aws_cloudfront_distribution" "this" {
   tags = merge(local.common_tags, { Name = "${local.prefix}-frontend-cdn" })
 }
 
-# ── Bucket policy — allow this distribution only ──────────────────────────
+# ── Bucket policy - allow this distribution only ──────────────────────────
 data "aws_iam_policy_document" "bucket" {
   statement {
     sid    = "AllowCloudFrontServicePrincipalRead"

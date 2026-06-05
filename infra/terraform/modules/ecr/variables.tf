@@ -10,7 +10,7 @@ variable "env" {
 
 variable "repo_names" {
   type        = list(string)
-  description = "Short names — one repo per. Final repo name = $${project}-$${env}-<name>."
+  description = "Short names - one repo per. Final repo name = $${project}-$${env}-<name>."
 }
 
 variable "kms_key_arn" {

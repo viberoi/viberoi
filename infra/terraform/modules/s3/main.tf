@@ -1,11 +1,11 @@
 # Platform S3 buckets.
 #
 # Three buckets per env:
-#   1. org-data — raw landing for agent session pushes. Bucket
+#   1. org-data - raw landing for agent session pushes. Bucket
 #      notification → SQS session_ingest fan-out. Wired in env file.
-#   2. backups — RDS automated snapshots' destination if logical backups
+#   2. backups - RDS automated snapshots' destination if logical backups
 #      are emitted via cron.
-#   3. frontend — Vite build output. CloudFront origin in 6E.
+#   3. frontend - Vite build output. CloudFront origin in 6E.
 #
 # All SSE-KMS, versioned, public-blocked. Bucket names suffixed with
 # the AWS account id for global uniqueness.
@@ -32,7 +32,7 @@ locals {
 # Re-used per bucket. Each block lives next to the bucket resource it
 # guards so Terraform's drift detection is straightforward.
 
-# ── org-data — raw landing ─────────────────────────────────────────────────
+# ── org-data - raw landing ─────────────────────────────────────────────────
 resource "aws_s3_bucket" "org_data" {
   bucket        = local.raw
   force_destroy = false
@@ -131,7 +131,7 @@ resource "aws_s3_bucket_versioning" "backups" {
 
 # ── frontend ───────────────────────────────────────────────────────────────
 # Hosting via CloudFront (6E). Bucket itself stays private; CF accesses
-# via OAC. SSE-S3 (AES256) — CF cannot read SSE-KMS unless we share key
+# via OAC. SSE-S3 (AES256) - CF cannot read SSE-KMS unless we share key
 # policy with the CF service principal, which adds complexity.
 resource "aws_s3_bucket" "frontend" {
   bucket        = local.fe

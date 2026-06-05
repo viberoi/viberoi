@@ -1,6 +1,6 @@
 output "state_bucket" {
   value       = aws_s3_bucket.tf_state.id
-  description = "Name of the S3 state bucket — use in other modules' backend config."
+  description = "Name of the S3 state bucket - use in other modules' backend config."
 }
 
 output "lock_table" {

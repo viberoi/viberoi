@@ -9,7 +9,7 @@ output "distribution_domain_name" {
 }
 
 output "distribution_hosted_zone_id" {
-  description = "Z2FDTNDATAQYW2 — same for every CloudFront distribution. For an A-alias if you ever migrate DNS to Route 53."
+  description = "Z2FDTNDATAQYW2 - same for every CloudFront distribution. For an A-alias if you ever migrate DNS to Route 53."
   value       = aws_cloudfront_distribution.this.hosted_zone_id
 }
 

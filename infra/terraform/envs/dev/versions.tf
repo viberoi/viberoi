@@ -19,7 +19,7 @@ terraform {
     region         = "us-east-1"
     dynamodb_table = "viberoi-tf-lock"
     encrypt        = true
-    # `bucket` intentionally unset — pass via:
+    # `bucket` intentionally unset - pass via:
     #   terraform init -backend-config="bucket=viberoi-tf-state-<account_id>"
     # so a single repo can target multiple AWS accounts without code edits.
   }

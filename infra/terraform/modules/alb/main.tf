@@ -25,7 +25,7 @@ locals {
     var.tags,
   )
 
-  # Service whose path_patterns is ["*"] becomes the default — the rule
+  # Service whose path_patterns is ["*"] becomes the default - the rule
   # with the highest priority number, AND the listener's default_action.
   default_service = [
     for k, v in var.services : k if length(v.path_patterns) == 1 && v.path_patterns[0] == "*"
@@ -42,7 +42,7 @@ resource "aws_lb" "this" {
 
   drop_invalid_header_fields = true
 
-  enable_deletion_protection = false # dev — flip true in prod
+  enable_deletion_protection = false # dev - flip true in prod
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-alb" })
 }
@@ -79,7 +79,7 @@ resource "aws_lb_target_group" "this" {
   }
 }
 
-# ── HTTP listener — redirect to HTTPS ──────────────────────────────────────
+# ── HTTP listener - redirect to HTTPS ──────────────────────────────────────
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
@@ -110,7 +110,7 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# ── Listener rules — one per non-default service ──────────────────────────
+# ── Listener rules - one per non-default service ──────────────────────────
 resource "aws_lb_listener_rule" "service" {
   for_each = {
     for k, v in var.services : k => v if k != local.default_service

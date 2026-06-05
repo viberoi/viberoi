@@ -22,7 +22,7 @@ locals {
   )
 }
 
-# Log group — we own it when caller doesn't pass one in. Most consumers
+# Log group - we own it when caller doesn't pass one in. Most consumers
 # in this stack pass log_group_name from modules/log_groups, but
 # providing a fallback keeps the module standalone for tests.
 resource "aws_cloudwatch_log_group" "this" {
@@ -64,6 +64,6 @@ resource "aws_lambda_function" "this" {
 
   # Image URI updates flow through Terraform; logs config flows through
   # the dedicated log_group resource above (or the env composition).
-  # Don't ignore environment — env-var changes ARE deploys.
+  # Don't ignore environment - env-var changes ARE deploys.
   depends_on = [aws_cloudwatch_log_group.this]
 }

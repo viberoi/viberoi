@@ -25,13 +25,13 @@ variable "frontend_bucket_arn" {
 
 variable "aliases" {
   type        = list(string)
-  description = "Custom domain CNAMEs — e.g. ['app.viberoi.io']. Empty list = CloudFront-only domain."
+  description = "Custom domain CNAMEs - e.g. ['app.viberoi.io']. Empty list = CloudFront-only domain."
   default     = []
 }
 
 variable "certificate_arn" {
   type        = string
-  description = "ACM cert ARN (us-east-1 — CloudFront requirement). Null = use CloudFront default cert (only valid when aliases is empty)."
+  description = "ACM cert ARN (us-east-1 - CloudFront requirement). Null = use CloudFront default cert (only valid when aliases is empty)."
   default     = null
 }
 

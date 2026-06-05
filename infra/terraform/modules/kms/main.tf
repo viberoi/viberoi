@@ -7,7 +7,7 @@
 #   - S3 SSE-KMS
 #   - SQS queue encryption
 #
-# Annual rotation is enabled — AWS swaps the underlying material once
+# Annual rotation is enabled - AWS swaps the underlying material once
 # a year. Decrypt across versions is automatic, so old ciphertexts
 # (stored in `*_key_version=1`) keep reading. Bump `key_version` in
 # our column shape only when WE want to force a re-encryption pass.
@@ -30,7 +30,7 @@ locals {
 }
 
 resource "aws_kms_key" "this" {
-  description             = "${local.prefix} — envelope encryption for PII at rest"
+  description             = "${local.prefix} - envelope encryption for PII at rest"
   key_usage               = "ENCRYPT_DECRYPT"
   deletion_window_in_days = var.deletion_window_days
   enable_key_rotation     = var.enable_key_rotation

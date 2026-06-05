@@ -10,12 +10,12 @@ variable "env" {
 
 variable "service_names" {
   type        = list(string)
-  description = "Short names — one log group per. Final = /viberoi/<env>/<kind>/<name>."
+  description = "Short names - one log group per. Final = /viberoi/<env>/<kind>/<name>."
 }
 
 variable "log_kind" {
   type        = string
-  description = "ecs | lambda — slotted into the log-group path so the console tree is clean."
+  description = "ecs | lambda - slotted into the log-group path so the console tree is clean."
 
   validation {
     condition     = contains(["ecs", "lambda"], var.log_kind)
@@ -30,7 +30,7 @@ variable "retention_days" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "CloudWatch logs require a key whose policy allows logs.amazonaws.com — see README."
+  description = "CloudWatch logs require a key whose policy allows logs.amazonaws.com - see README."
 }
 
 variable "tags" {

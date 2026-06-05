@@ -5,7 +5,7 @@
 #   kind = lambda → Lambda invocation logs (Lambda runtime auto-writes)
 #
 # KMS-encrypted with the env CMK. The CMK's policy must allow
-# `logs.<region>.amazonaws.com` to encrypt — modules/kms doesn't grant
+# `logs.<region>.amazonaws.com` to encrypt - modules/kms doesn't grant
 # that by default, so for now we leave logs unencrypted in dev to avoid
 # coupling. Re-enable when ready by passing a kms_key_arn whose policy
 # includes the logs service principal.

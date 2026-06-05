@@ -9,12 +9,12 @@ output "user_pool_arn" {
 }
 
 output "user_pool_endpoint" {
-  description = "OIDC issuer URL — matches the `iss` claim in every Cognito token."
+  description = "OIDC issuer URL - matches the `iss` claim in every Cognito token."
   value       = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.this.id}"
 }
 
 output "spa_client_id" {
-  description = "App client id — wired into the frontend's Cognito config."
+  description = "App client id - wired into the frontend's Cognito config."
   value       = aws_cognito_user_pool_client.spa.id
 }
 
@@ -24,7 +24,7 @@ output "hosted_ui_domain" {
 }
 
 output "hosted_ui_domain_prefix" {
-  description = "Just the subdomain prefix — useful when wiring a custom domain in 6E."
+  description = "Just the subdomain prefix - useful when wiring a custom domain in 6E."
   value       = aws_cognito_user_pool_domain.this.domain
 }
 

@@ -19,7 +19,7 @@ variable "region" {
 variable "vpc_cidr" {
   type        = string
   default     = "10.20.0.0/16"
-  description = "Top-level VPC CIDR — sliced into /20 per subnet."
+  description = "Top-level VPC CIDR - sliced into /20 per subnet."
 }
 
 variable "az_count" {
@@ -37,19 +37,19 @@ variable "single_nat" {
 variable "domain" {
   type        = string
   default     = ""
-  description = "Apex domain — e.g. viberoi.io. Empty disables 6E (ACM/ALB-cert/CloudFront-custom-domain/Cognito-custom-domain stay blank). When set, terraform creates an ACM cert covering app.<domain>, api.<domain>, auth.<domain>, webhooks.<domain> — you then add the validation CNAMEs at Hostinger."
+  description = "Apex domain - e.g. viberoi.io. Empty disables 6E (ACM/ALB-cert/CloudFront-custom-domain/Cognito-custom-domain stay blank). When set, terraform creates an ACM cert covering app.<domain>, api.<domain>, auth.<domain>, webhooks.<domain> - you then add the validation CNAMEs at Hostinger."
 }
 
 variable "enable_cognito_custom_domain" {
   type        = bool
   default     = false
-  description = "Phase 3 toggle — flip to true ONLY after the ACM cert is ISSUED (cognito custom domains refuse pending certs). See envs/dev/README."
+  description = "Phase 3 toggle - flip to true ONLY after the ACM cert is ISSUED (cognito custom domains refuse pending certs). See envs/dev/README."
 }
 
 variable "enable_cloudfront_custom_domain" {
   type        = bool
   default     = false
-  description = "Phase 3 toggle — same rule as cognito. CloudFront refuses an unvalidated cert at create time."
+  description = "Phase 3 toggle - same rule as cognito. CloudFront refuses an unvalidated cert at create time."
 }
 
 # ── Cognito federated IdPs (optional) ──────────────────────────────────────

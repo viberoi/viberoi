@@ -5,7 +5,7 @@ variable "user_pool_id" {
 
 variable "domain" {
   type        = string
-  description = "Full FQDN — e.g. auth.viberoi.io. Must NOT have a CNAME at the apex."
+  description = "Full FQDN - e.g. auth.viberoi.io. Must NOT have a CNAME at the apex."
 }
 
 variable "certificate_arn" {

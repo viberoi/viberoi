@@ -109,7 +109,7 @@ resource "aws_ecs_service" "this" {
   deployment_maximum_percent         = 200
 
   # When GitHub Actions updates the task def via `aws ecs update-service`,
-  # don't fight it on `desired_count` — leave that to the runtime owner.
+  # don't fight it on `desired_count` - leave that to the runtime owner.
   lifecycle {
     ignore_changes = [task_definition, desired_count]
   }

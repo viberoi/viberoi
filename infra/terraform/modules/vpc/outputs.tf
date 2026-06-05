@@ -1,5 +1,5 @@
 output "vpc_id" {
-  description = "VPC id — referenced by every other module that creates resources in the VPC."
+  description = "VPC id - referenced by every other module that creates resources in the VPC."
   value       = aws_vpc.this.id
 }
 
@@ -29,6 +29,6 @@ output "availability_zones" {
 }
 
 output "nat_gateway_ids" {
-  description = "NAT gateway ids — one or more depending on `single_nat`."
+  description = "NAT gateway ids - one or more depending on `single_nat`."
   value       = aws_nat_gateway.this[*].id
 }

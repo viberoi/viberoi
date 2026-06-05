@@ -1,5 +1,5 @@
 output "cluster_id" {
-  description = "Cluster id — passed into every ECS service."
+  description = "Cluster id - passed into every ECS service."
   value       = aws_ecs_cluster.this.id
 }
 

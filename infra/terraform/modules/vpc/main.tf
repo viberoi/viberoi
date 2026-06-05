@@ -1,14 +1,14 @@
 # VPC + subnets + NAT + (optional) VPC endpoints.
 #
 # Subnet plan (per AZ, with /16 root + /20 subnets):
-#   public  — ALB + NAT
-#   private — ECS Fargate tasks, Lambdas (egress via NAT)
-#   data    — RDS + ElastiCache (no egress)
+#   public  - ALB + NAT
+#   private - ECS Fargate tasks, Lambdas (egress via NAT)
+#   data    - RDS + ElastiCache (no egress)
 #
 # `single_nat = true` puts all private subnets through one NAT gateway in
 # the first AZ. Cuts cost ~$32/AZ. The trade-off is that if that AZ
 # fails, private subnets in other AZs lose outbound. Acceptable in dev,
-# NOT in prod — flip `single_nat = false` there.
+# NOT in prod - flip `single_nat = false` there.
 
 data "aws_availability_zones" "available" {
   state = "available"
@@ -130,7 +130,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# Private subnets — one RT per AZ so we can either pin them all to one
+# Private subnets - one RT per AZ so we can either pin them all to one
 # NAT (single_nat) or fan out one NAT per AZ.
 resource "aws_route_table" "private" {
   count  = var.az_count
@@ -150,7 +150,7 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
-# Data subnets — RDS / Redis. NO outbound — RDS doesn't need internet
+# Data subnets - RDS / Redis. NO outbound - RDS doesn't need internet
 # access; if a service needs to reach the internet from data, it should
 # be in private instead.
 resource "aws_route_table" "data" {
@@ -165,7 +165,7 @@ resource "aws_route_table_association" "data" {
 }
 
 # ── VPC endpoints (optional) ───────────────────────────────────────────────
-# Gateway endpoints (free) — S3, DynamoDB.
+# Gateway endpoints (free) - S3, DynamoDB.
 resource "aws_vpc_endpoint" "s3" {
   count             = var.enable_vpc_endpoints ? 1 : 0
   vpc_id            = aws_vpc.this.id

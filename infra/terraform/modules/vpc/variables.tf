@@ -1,12 +1,12 @@
 variable "project" {
   type        = string
-  description = "Project name — prefixed on every resource."
+  description = "Project name - prefixed on every resource."
   default     = "viberoi"
 }
 
 variable "env" {
   type        = string
-  description = "Environment name — dev | staging | prod."
+  description = "Environment name - dev | staging | prod."
 
   validation {
     condition     = contains(["dev", "staging", "prod"], var.env)

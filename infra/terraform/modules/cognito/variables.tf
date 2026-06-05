@@ -35,7 +35,7 @@ variable "lambda_post_confirmation_arn" {
 
 variable "lambda_pre_token_generation_arn" {
   type        = string
-  description = "PreTokenGeneration v2 trigger ARN — injects custom:org_id / role / team_id / developer_id into the access token. Null until 6D."
+  description = "PreTokenGeneration v2 trigger ARN - injects custom:org_id / role / team_id / developer_id into the access token. Null until 6D."
   default     = null
 }
 

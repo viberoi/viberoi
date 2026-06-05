@@ -1,10 +1,10 @@
 # Cognito user pool + app client + hosted-UI domain.
 #
-# Tier: ESSENTIALS — free for the first 50k MAU/month, required for the
+# Tier: ESSENTIALS - free for the first 50k MAU/month, required for the
 # PreTokenGeneration v2 trigger that injects custom claims into the
 # access token (Slice 5A: we verify access tokens, not ID tokens).
 #
-# Custom attributes — mutable so the PostConfirmation Lambda can write
+# Custom attributes - mutable so the PostConfirmation Lambda can write
 # them back via `AdminUpdateUserAttributes` after row provisioning.
 #
 # Federated IdPs (Google, GitHub OIDC) are conditional: empty creds →
@@ -32,7 +32,7 @@ locals {
     local.create_github ? ["GitHub"] : [],
   )
 
-  # Lambda triggers — only emit blocks for the ones that are wired.
+  # Lambda triggers - only emit blocks for the ones that are wired.
   has_any_trigger = (
     var.lambda_pre_signup_arn != null ||
     var.lambda_post_confirmation_arn != null ||
@@ -48,11 +48,11 @@ resource "aws_cognito_user_pool" "this" {
   auto_verified_attributes = ["email"]
   deletion_protection      = var.deletion_protection
 
-  # ESSENTIALS — required for PreTokenGeneration v2 (custom claims in
+  # ESSENTIALS - required for PreTokenGeneration v2 (custom claims in
   # access token). Free up to 50k MAU/month.
   user_pool_tier = "ESSENTIALS"
 
-  # Required attributes — email is the sign-in handle.
+  # Required attributes - email is the sign-in handle.
   schema {
     name                     = "email"
     attribute_data_type      = "String"
@@ -66,7 +66,7 @@ resource "aws_cognito_user_pool" "this" {
     }
   }
 
-  # Custom attributes — the PostConfirmation Lambda writes these via
+  # Custom attributes - the PostConfirmation Lambda writes these via
   # AdminUpdateUserAttributes after creating the org + developer rows.
   schema {
     name                     = "org_id"
@@ -144,7 +144,7 @@ resource "aws_cognito_user_pool" "this" {
     email_message        = "Your verification code is {####}"
   }
 
-  # Conditional lambda_config — only emit when at least one trigger ARN
+  # Conditional lambda_config - only emit when at least one trigger ARN
   # is wired. Module accepts nulls in 6C and gets real ARNs in 6D.
   dynamic "lambda_config" {
     for_each = local.has_any_trigger ? [1] : []
@@ -229,15 +229,15 @@ resource "aws_cognito_identity_provider" "github" {
   }
 }
 
-# ── App client (public SPA — no client_secret) ─────────────────────────────
+# ── App client (public SPA - no client_secret) ─────────────────────────────
 resource "aws_cognito_user_pool_client" "spa" {
   name         = "${local.prefix}-spa"
   user_pool_id = aws_cognito_user_pool.this.id
 
-  generate_secret = false # SPA — can't keep a secret
+  generate_secret = false # SPA - can't keep a secret
 
   # USER_SRP_AUTH for password sign-in; REFRESH_TOKEN_AUTH for renewal.
-  # USER_PASSWORD_AUTH explicitly OFF — SRP only.
+  # USER_PASSWORD_AUTH explicitly OFF - SRP only.
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
@@ -263,7 +263,7 @@ resource "aws_cognito_user_pool_client" "spa" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
 
-  # Custom-attribute read/write — required so PostConfirmation can update
+  # Custom-attribute read/write - required so PostConfirmation can update
   # the user. `email_verified` write is also required.
   read_attributes = [
     "email",
@@ -290,7 +290,7 @@ resource "aws_cognito_user_pool_client" "spa" {
 }
 
 # ── Lambda permissions (only when trigger ARNs are wired) ──────────────────
-# Cognito invokes the trigger Lambdas — they need permission to be invoked
+# Cognito invokes the trigger Lambdas - they need permission to be invoked
 # by Cognito. These are no-ops when the ARNs are null (6C).
 resource "aws_lambda_permission" "cognito_pre_signup" {
   count = var.lambda_pre_signup_arn != null ? 1 : 0

@@ -6,7 +6,7 @@
 # migrations then run with `viberoi_admin` as usual.
 #
 # Storage is KMS-encrypted with the env CMK (matches the same CMK used
-# for application PII at rest — no second key to manage).
+# for application PII at rest - no second key to manage).
 
 locals {
   prefix = "${var.project}-${var.env}"
@@ -33,7 +33,7 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_db_parameter_group" "this" {
   name        = "${local.prefix}-pg16"
   family      = "postgres16"
-  description = "${local.prefix} Postgres params — RLS-friendly defaults."
+  description = "${local.prefix} Postgres params - RLS-friendly defaults."
 
   # `force_ssl=1` so non-TLS connections are refused. Library defaults
   # to SSL already; this is belt-and-braces.

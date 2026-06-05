@@ -3,7 +3,7 @@ output "api_id" {
 }
 
 output "api_endpoint" {
-  description = "Default endpoint — paste into GitHub/Jira/Linear webhook config until the custom domain is wired in 6E."
+  description = "Default endpoint - paste into GitHub/Jira/Linear webhook config until the custom domain is wired in 6E."
   value       = aws_apigatewayv2_api.this.api_endpoint
 }
 

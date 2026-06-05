@@ -1,6 +1,6 @@
 output "service_name" {
   value       = aws_ecs_service.this.name
-  description = "ECS service name — `aws ecs update-service --service <this>` for deploys."
+  description = "ECS service name - `aws ecs update-service --service <this>` for deploys."
 }
 
 output "task_definition_family" {

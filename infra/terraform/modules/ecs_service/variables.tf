@@ -50,7 +50,7 @@ variable "log_group_name" {
 
 variable "container_port" {
   type        = number
-  description = "Port the container listens on. 0 for pure consumers (worker, notification) — no port published."
+  description = "Port the container listens on. 0 for pure consumers (worker, notification) - no port published."
   default     = 0
 }
 

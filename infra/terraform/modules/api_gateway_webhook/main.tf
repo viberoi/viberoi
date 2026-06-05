@@ -3,7 +3,7 @@
 # Route: ANY /webhooks/{provider}/{integration_id}
 # (matches `_PATH_RE` in webhook_receiver/handler.py)
 #
-# CORS is left default — webhook callers don't run in browsers, so no
+# CORS is left default - webhook callers don't run in browsers, so no
 # preflight needed.
 #
 # The API Gateway base URL is what we paste into GitHub/Jira/Linear
@@ -32,7 +32,7 @@ resource "aws_apigatewayv2_api" "this" {
   tags = local.common_tags
 }
 
-# Lambda proxy integration — passes the raw request through, body
+# Lambda proxy integration - passes the raw request through, body
 # included, so the Lambda can compute HMAC over the exact bytes.
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id           = aws_apigatewayv2_api.this.id

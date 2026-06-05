@@ -116,7 +116,7 @@ module "rds" {
   kms_key_arn        = module.kms.key_arn
   master_password    = module.secrets.rds_master_password
 
-  # Dev defaults — match module defaults explicitly so changes here are visible.
+  # Dev defaults - match module defaults explicitly so changes here are visible.
   instance_class        = "db.t4g.micro"
   multi_az              = false
   backup_retention_days = 7
@@ -139,7 +139,7 @@ module "redis" {
 }
 
 # ── Cognito ────────────────────────────────────────────────────────────────
-# Lambda trigger ARNs flow from the Lambda module declarations below —
+# Lambda trigger ARNs flow from the Lambda module declarations below -
 # Terraform handles the dependency ordering.
 module "cognito" {
   source = "../../modules/cognito"
@@ -148,7 +148,7 @@ module "cognito" {
   env     = var.env
 
   # Local-dev callbacks always live here. The deployed-app callback gets
-  # appended when `var.domain` is set — Cognito accepts multiple, so
+  # appended when `var.domain` is set - Cognito accepts multiple, so
   # both local and prod work from the same pool with one apply.
   callback_urls = concat(
     [
@@ -165,14 +165,14 @@ module "cognito" {
     var.domain != "" ? ["https://app.${var.domain}/"] : [],
   )
 
-  # Federated IdPs — empty defaults → no IdPs created. Set
+  # Federated IdPs - empty defaults → no IdPs created. Set
   # TF_VAR_google_client_id etc to enable.
   google_client_id          = var.google_client_id
   google_client_secret      = var.google_client_secret
   github_oidc_client_id     = var.github_oidc_client_id
   github_oidc_client_secret = var.github_oidc_client_secret
 
-  # Lambda trigger wiring — TWO-PHASE APPLY (see README "Phase 2 — wire
+  # Lambda trigger wiring - TWO-PHASE APPLY (see README "Phase 2 - wire
   # Cognito triggers"). Phase 1 leaves these as literal null because
   # Cognito's `lambda_config` would create a graph cycle with the Lambda
   # env vars (which themselves depend on the user pool id).
@@ -189,7 +189,7 @@ module "cognito" {
   lambda_post_confirmation_arn    = null
   lambda_pre_token_generation_arn = null
 
-  deletion_protection = "INACTIVE" # dev — easier teardown
+  deletion_protection = "INACTIVE" # dev - easier teardown
   tags                = local.common_tags
 }
 
@@ -251,9 +251,9 @@ module "log_groups_lambda" {
   tags           = local.common_tags
 }
 
-# ── IAM task roles — one per service / Lambda ──────────────────────────────
+# ── IAM task roles - one per service / Lambda ──────────────────────────────
 locals {
-  # Image refs use the `:bootstrap` tag — a placeholder GitHub Actions
+  # Image refs use the `:bootstrap` tag - a placeholder GitHub Actions
   # replaces with `:<commit-sha>` on first deploy. Until that push, the
   # tasks stay at desired_count=0 so missing-image isn't a runtime
   # failure.
@@ -276,7 +276,7 @@ locals {
     VIBEROI_COGNITO_APP_CLIENT_ID = module.cognito.spa_client_id
   }
 
-  # Secret refs every service needs — name → Secrets Manager ARN.
+  # Secret refs every service needs - name → Secrets Manager ARN.
   # Application code reads via viberoi_shared.secrets.get(name) but
   # ECS can also inject as env vars; for now we use env-var injection
   # to keep app code unchanged.
@@ -286,7 +286,7 @@ locals {
   }
 }
 
-# Ingest — pushes to S3 raw landing.
+# Ingest - pushes to S3 raw landing.
 module "iam_ingest" {
   source = "../../modules/iam_task_role"
 
@@ -299,7 +299,7 @@ module "iam_ingest" {
   tags          = local.common_tags
 }
 
-# Worker — consumes session_ingest + webhook_events; reads raw S3.
+# Worker - consumes session_ingest + webhook_events; reads raw S3.
 module "iam_worker" {
   source = "../../modules/iam_task_role"
 
@@ -317,7 +317,7 @@ module "iam_worker" {
   tags          = local.common_tags
 }
 
-# Integration — outbound HTTPS to providers; consumes backfill_jobs;
+# Integration - outbound HTTPS to providers; consumes backfill_jobs;
 # publishes to backfill_jobs (re-enqueue) + notification_jobs.
 module "iam_integration" {
   source = "../../modules/iam_task_role"
@@ -341,7 +341,7 @@ module "iam_integration" {
   tags             = local.common_tags
 }
 
-# API — read-only dashboard backend.
+# API - read-only dashboard backend.
 module "iam_api" {
   source = "../../modules/iam_task_role"
 
@@ -353,7 +353,7 @@ module "iam_api" {
   tags         = local.common_tags
 }
 
-# Notification — consumes notification_jobs, delivers to Slack/Teams.
+# Notification - consumes notification_jobs, delivers to Slack/Teams.
 module "iam_notification" {
   source = "../../modules/iam_task_role"
 
@@ -366,7 +366,7 @@ module "iam_notification" {
   tags             = local.common_tags
 }
 
-# ── ECS services — desired_count=0 until first image push ─────────────────
+# ── ECS services - desired_count=0 until first image push ─────────────────
 module "ecs_ingest" {
   source = "../../modules/ecs_service"
 
@@ -384,7 +384,7 @@ module "ecs_ingest" {
   env_vars           = local.common_runtime_env
   secrets            = local.common_runtime_secrets
 
-  # ALB attachment — only when the ALB exists (domain set).
+  # ALB attachment - only when the ALB exists (domain set).
   load_balancer = var.domain != "" ? {
     target_group_arn = module.alb[0].target_group_arns["ingest"]
     container_port   = 8001
@@ -635,12 +635,12 @@ module "acm" {
 }
 
 # ── ALB ────────────────────────────────────────────────────────────────────
-# Created regardless of `domain` — the ALB DNS name is always reachable;
+# Created regardless of `domain` - the ALB DNS name is always reachable;
 # the HTTPS listener attaches the cert only when one exists.
 #
 # When `domain == ""`, we still create the ALB but skip HTTPS (HTTP only
 # isn't acceptable for prod; for dev you can hit the ALB DNS directly
-# over the HTTP listener which redirects to HTTPS — and HTTPS will fail
+# over the HTTP listener which redirects to HTTPS - and HTTPS will fail
 # without a cert. So in practice domain must be set before the ALB is
 # useful. Apply the ACM module first.)
 module "alb" {
@@ -658,7 +658,7 @@ module "alb" {
 }
 
 # ── CloudFront for frontend ────────────────────────────────────────────────
-# Defaults to NO custom domain — serves on `<id>.cloudfront.net`. Once
+# Defaults to NO custom domain - serves on `<id>.cloudfront.net`. Once
 # ACM cert is ISSUED, flip `enable_cloudfront_custom_domain = true`
 # and re-apply to attach `app.<domain>`.
 module "cloudfront" {
@@ -784,7 +784,7 @@ output "sqs_dlq_arns" {
 }
 
 output "secret_arns" {
-  description = "All Secrets Manager ARNs — task roles get decrypt permission on these in 6D."
+  description = "All Secrets Manager ARNs - task roles get decrypt permission on these in 6D."
   value       = module.secrets.all_secret_arns
 }
 
@@ -799,12 +799,12 @@ output "cognito_user_pool_arn" {
 }
 
 output "cognito_app_client_id" {
-  description = "SPA client id — set in backend settings.cognito_app_client_id and in frontend Cognito config."
+  description = "SPA client id - set in backend settings.cognito_app_client_id and in frontend Cognito config."
   value       = module.cognito.spa_client_id
 }
 
 output "cognito_user_pool_endpoint" {
-  description = "OIDC issuer — matches the iss claim the JWT verifier expects."
+  description = "OIDC issuer - matches the iss claim the JWT verifier expects."
   value       = module.cognito.user_pool_endpoint
 }
 
@@ -820,7 +820,7 @@ output "ecr_repository_urls" {
 }
 
 output "ecs_cluster_name" {
-  description = "Cluster name — `aws ecs update-service --cluster <this>` for deploys."
+  description = "Cluster name - `aws ecs update-service --cluster <this>` for deploys."
   value       = module.ecs_cluster.cluster_name
 }
 

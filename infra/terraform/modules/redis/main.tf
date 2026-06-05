@@ -1,6 +1,6 @@
-# ElastiCache Redis (replication group — single-node when num_cache_clusters=1).
+# ElastiCache Redis (replication group - single-node when num_cache_clusters=1).
 #
-# At-rest + in-transit encryption on. No auth token for V1 — VPC SG
+# At-rest + in-transit encryption on. No auth token for V1 - VPC SG
 # already restricts to services/lambda. Auth token complicates the
 # Python client and adds rotation overhead; skip until a real audit
 # demand surfaces.
@@ -32,7 +32,7 @@ resource "aws_elasticache_parameter_group" "this" {
 
   parameter {
     name  = "maxmemory-policy"
-    value = "allkeys-lru" # Redis is a cache — evict LRU when memory full
+    value = "allkeys-lru" # Redis is a cache - evict LRU when memory full
   }
 
   tags = local.common_tags
