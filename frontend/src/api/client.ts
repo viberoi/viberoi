@@ -235,6 +235,20 @@ export const api = {
       `/kpis/by-developer?window_days=${windowDays}&limit=${limit}`,
     ),
 
+  kpiByTool: (windowDays = 30) =>
+    request<ByToolResponse>(`/kpis/by-tool?window_days=${windowDays}`),
+
+  kpiByModel: (windowDays = 30) =>
+    request<ByModelResponse>(`/kpis/by-model?window_days=${windowDays}`),
+
+  kpiByMode: (windowDays = 30) =>
+    request<ByModeResponse>(`/kpis/by-mode?window_days=${windowDays}`),
+
+  kpiPerTicket: (windowDays = 30, limit = 10) =>
+    request<PerTicketResponse>(
+      `/kpis/per-ticket?window_days=${windowDays}&limit=${limit}`,
+    ),
+
   listSessions: (cursor?: string, limit = 50) => {
     const q = new URLSearchParams();
     if (cursor) q.set("cursor", cursor);
@@ -334,9 +348,60 @@ export interface DeveloperRollup {
   sessions: number;
   tokens: number;
   cost_usd: string;
+  lines_added: number;
+  lines_deleted: number;
+  commit_count: number;
 }
 
 export interface ByDeveloperResponse {
   window_days: number;
   items: DeveloperRollup[];
+}
+
+export interface ToolRollup {
+  tool_name: string;
+  sessions: number;
+  tokens: number;
+  cost_usd: string;
+}
+
+export interface ByToolResponse {
+  window_days: number;
+  items: ToolRollup[];
+}
+
+export interface ModelRollup {
+  model: string;
+  sessions: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: string;
+}
+
+export interface ByModelResponse {
+  window_days: number;
+  items: ModelRollup[];
+}
+
+export interface ModeRollup {
+  mode: string;
+  sessions: number;
+  cost_usd: string;
+}
+
+export interface ByModeResponse {
+  window_days: number;
+  items: ModeRollup[];
+}
+
+export interface TicketRollup {
+  ticket_external_id: string;
+  sessions: number;
+  tokens: number;
+  cost_usd: string;
+}
+
+export interface PerTicketResponse {
+  window_days: number;
+  items: TicketRollup[];
 }

@@ -161,6 +161,9 @@ class DeveloperRollup(BaseModel):
     sessions: int
     tokens: int
     cost_usd: Decimal
+    lines_added: int
+    lines_deleted: int
+    commit_count: int
 
 
 class ByDeveloperResponse(BaseModel):
@@ -190,7 +193,10 @@ async def by_developer_route(
                        d.email_ciphertext, d.email_key_version, d.email_iv,
                        COALESCE(COUNT(s.id), 0) AS sessions,
                        COALESCE(SUM(s.tokens_input + s.tokens_output), 0) AS tokens,
-                       COALESCE(SUM(s.total_cost_usd), 0) AS cost_usd
+                       COALESCE(SUM(s.total_cost_usd), 0) AS cost_usd,
+                       COALESCE(SUM(s.lines_added), 0) AS lines_added,
+                       COALESCE(SUM(s.lines_deleted), 0) AS lines_deleted,
+                       COALESCE(SUM(COALESCE(array_length(s.commit_hashes, 1), 0)), 0) AS commit_count
                 FROM developers d
                 LEFT JOIN sessions s
                   ON s.developer_id = d.id
@@ -207,7 +213,19 @@ async def by_developer_route(
 
         items: list[DeveloperRollup] = []
         for r in rows.all():
-            dev_id, role, ct, kv, iv, sessions, tokens, cost = r
+            (
+                dev_id,
+                role,
+                ct,
+                kv,
+                iv,
+                sessions,
+                tokens,
+                cost,
+                lines_added,
+                lines_deleted,
+                commit_count,
+            ) = r
             email = await decrypt_pii(
                 EncryptedField(
                     ciphertext=bytes(ct), key_version=kv, iv=bytes(iv)
@@ -222,6 +240,224 @@ async def by_developer_route(
                     sessions=int(sessions),
                     tokens=int(tokens),
                     cost_usd=Decimal(str(cost)),
+                    lines_added=int(lines_added),
+                    lines_deleted=int(lines_deleted),
+                    commit_count=int(commit_count),
                 )
             )
     return ByDeveloperResponse(window_days=window_days, items=items)
+
+
+# ── By tool ────────────────────────────────────────────────────────────────
+
+
+class ToolRollup(BaseModel):
+    tool_name: str
+    sessions: int
+    tokens: int
+    cost_usd: Decimal
+
+
+class ByToolResponse(BaseModel):
+    window_days: int
+    items: list[ToolRollup]
+
+
+@router.get("/by-tool", response_model=ByToolResponse)
+async def by_tool_route(
+    ctx: Annotated[
+        ApiAuthContext,
+        Depends(require_role(Role.ORG_ADMIN, Role.TEAM_LEAD, Role.DEVELOPER)),
+    ],
+    window_days: int = Query(default=30, ge=1, le=365),
+) -> ByToolResponse:
+    """AI tool mix donut data — sessions/tokens/cost grouped by tool_name."""
+    async with org_scoped_session(ctx.org_id) as db:
+        rows = await db.execute(
+            text(
+                """
+                SELECT tool_name,
+                       COUNT(*) AS sessions,
+                       COALESCE(SUM(tokens_input + tokens_output), 0) AS tokens,
+                       COALESCE(SUM(total_cost_usd), 0) AS cost_usd
+                FROM sessions
+                WHERE captured_at >= now() - make_interval(days => :w)
+                GROUP BY tool_name
+                ORDER BY cost_usd DESC NULLS LAST, sessions DESC
+                """
+            ),
+            {"w": window_days},
+        )
+        items = [
+            ToolRollup(
+                tool_name=r[0],
+                sessions=int(r[1]),
+                tokens=int(r[2]),
+                cost_usd=Decimal(str(r[3])),
+            )
+            for r in rows.all()
+        ]
+    return ByToolResponse(window_days=window_days, items=items)
+
+
+# ── By model ───────────────────────────────────────────────────────────────
+
+
+class ModelRollup(BaseModel):
+    model: str
+    sessions: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: Decimal
+
+
+class ByModelResponse(BaseModel):
+    window_days: int
+    items: list[ModelRollup]
+
+
+@router.get("/by-model", response_model=ByModelResponse)
+async def by_model_route(
+    ctx: Annotated[
+        ApiAuthContext,
+        Depends(require_role(Role.ORG_ADMIN, Role.TEAM_LEAD, Role.DEVELOPER)),
+    ],
+    window_days: int = Query(default=30, ge=1, le=365),
+) -> ByModelResponse:
+    """Per-model usage — input vs output token split + cost. Powers the
+    "model usage efficiency" table on the People view."""
+    async with org_scoped_session(ctx.org_id) as db:
+        rows = await db.execute(
+            text(
+                """
+                SELECT tool_model,
+                       COUNT(*) AS sessions,
+                       COALESCE(SUM(tokens_input), 0) AS input_tokens,
+                       COALESCE(SUM(tokens_output), 0) AS output_tokens,
+                       COALESCE(SUM(total_cost_usd), 0) AS cost_usd
+                FROM sessions
+                WHERE captured_at >= now() - make_interval(days => :w)
+                  AND tool_model IS NOT NULL
+                GROUP BY tool_model
+                ORDER BY cost_usd DESC NULLS LAST
+                """
+            ),
+            {"w": window_days},
+        )
+        items = [
+            ModelRollup(
+                model=r[0],
+                sessions=int(r[1]),
+                input_tokens=int(r[2]),
+                output_tokens=int(r[3]),
+                cost_usd=Decimal(str(r[4])),
+            )
+            for r in rows.all()
+        ]
+    return ByModelResponse(window_days=window_days, items=items)
+
+
+# ── By mode ────────────────────────────────────────────────────────────────
+
+
+class ModeRollup(BaseModel):
+    mode: str
+    sessions: int
+    cost_usd: Decimal
+
+
+class ByModeResponse(BaseModel):
+    window_days: int
+    items: list[ModeRollup]
+
+
+@router.get("/by-mode", response_model=ByModeResponse)
+async def by_mode_route(
+    ctx: Annotated[
+        ApiAuthContext,
+        Depends(require_role(Role.ORG_ADMIN, Role.TEAM_LEAD, Role.DEVELOPER)),
+    ],
+    window_days: int = Query(default=30, ge=1, le=365),
+) -> ByModeResponse:
+    """Mode breakdown — Ask / Agent / Plan / Edit %. KPI 17."""
+    async with org_scoped_session(ctx.org_id) as db:
+        rows = await db.execute(
+            text(
+                """
+                SELECT mode,
+                       COUNT(*) AS sessions,
+                       COALESCE(SUM(total_cost_usd), 0) AS cost_usd
+                FROM sessions
+                WHERE captured_at >= now() - make_interval(days => :w)
+                GROUP BY mode
+                ORDER BY sessions DESC
+                """
+            ),
+            {"w": window_days},
+        )
+        items = [
+            ModeRollup(
+                mode=r[0],
+                sessions=int(r[1]),
+                cost_usd=Decimal(str(r[2])),
+            )
+            for r in rows.all()
+        ]
+    return ByModeResponse(window_days=window_days, items=items)
+
+
+# ── Per ticket cost ────────────────────────────────────────────────────────
+
+
+class TicketRollup(BaseModel):
+    ticket_external_id: str
+    sessions: int
+    tokens: int
+    cost_usd: Decimal
+
+
+class PerTicketResponse(BaseModel):
+    window_days: int
+    items: list[TicketRollup]
+
+
+@router.get("/per-ticket", response_model=PerTicketResponse)
+async def per_ticket_route(
+    ctx: Annotated[
+        ApiAuthContext,
+        Depends(require_role(Role.ORG_ADMIN, Role.TEAM_LEAD, Role.DEVELOPER)),
+    ],
+    window_days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> PerTicketResponse:
+    """Top tickets by AI-attributed cost. KPI 18 (cost per ticket).
+    Sessions with no attr_ticket_id are excluded (Unknown Queue lives
+    in a different surface)."""
+    async with org_scoped_session(ctx.org_id) as db:
+        rows = await db.execute(
+            text(
+                """
+                SELECT attr_ticket_id,
+                       COUNT(*) AS sessions,
+                       COALESCE(SUM(tokens_input + tokens_output), 0) AS tokens,
+                       COALESCE(SUM(total_cost_usd), 0) AS cost_usd
+                FROM sessions
+                WHERE captured_at >= now() - make_interval(days => :w)
+                  AND attr_ticket_id IS NOT NULL
+                GROUP BY attr_ticket_id
+                ORDER BY cost_usd DESC
+                LIMIT :lim
+                """
+            ),
+            {"w": window_days, "lim": limit},
+        )
+        items = [
+            TicketRollup(
+                ticket_external_id=r[0],
+                sessions=int(r[1]),
+                tokens=int(r[2]),
+                cost_usd=Decimal(str(r[3])),
+            )
+            for r in rows.all()
+        ]
+    return PerTicketResponse(window_days=window_days, items=items)

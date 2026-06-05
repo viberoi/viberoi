@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AreaChart, Card, Metric, Text, Title } from "@tremor/react";
+import { AreaChart, Card, DonutChart, Metric, Text, Title } from "@tremor/react";
 import { Info } from "lucide-react";
 
 import { api } from "../api/client";
@@ -51,6 +51,22 @@ export function Dashboard() {
     queryKey: ["kpis-by-dev", windowDays],
     queryFn: () => api.kpiByDeveloper(windowDays, 10),
     enabled: canSeeTeam,
+  });
+  const byTool = useQuery({
+    queryKey: ["kpis-by-tool", windowDays],
+    queryFn: () => api.kpiByTool(windowDays),
+  });
+  const byMode = useQuery({
+    queryKey: ["kpis-by-mode", windowDays],
+    queryFn: () => api.kpiByMode(windowDays),
+  });
+  const byModel = useQuery({
+    queryKey: ["kpis-by-model", windowDays],
+    queryFn: () => api.kpiByModel(windowDays),
+  });
+  const perTicket = useQuery({
+    queryKey: ["kpis-per-ticket", windowDays],
+    queryFn: () => api.kpiPerTicket(windowDays, 10),
   });
 
   return (
@@ -169,6 +185,61 @@ export function Dashboard() {
             )}
           </Card>
 
+          {/* Breakdowns row */}
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card className="bg-viberoi-card border-white/5">
+              <Text className="text-viberoi-sub uppercase tracking-wider text-xs mb-2">
+                Tool mix
+              </Text>
+              <DonutChartCard
+                data={byTool.data?.items.map((t) => ({
+                  name: t.tool_name,
+                  value: parseFloat(t.cost_usd),
+                })) ?? []}
+                isLoading={byTool.isLoading}
+                emptyHint="No sessions yet"
+              />
+            </Card>
+            <Card className="bg-viberoi-card border-white/5">
+              <Text className="text-viberoi-sub uppercase tracking-wider text-xs mb-2">
+                Mode breakdown
+              </Text>
+              <DonutChartCard
+                data={byMode.data?.items.map((m) => ({
+                  name: m.mode,
+                  value: m.sessions,
+                })) ?? []}
+                isLoading={byMode.isLoading}
+                emptyHint="No mode data"
+                valueLabel="sessions"
+              />
+            </Card>
+            <Card className="bg-viberoi-card border-white/5 overflow-hidden p-0">
+              <div className="px-4 pt-3 pb-1">
+                <Text className="text-viberoi-sub uppercase tracking-wider text-xs">
+                  Top tickets by AI cost
+                </Text>
+              </div>
+              <PerTicketTable
+                data={perTicket.data?.items ?? []}
+                isLoading={perTicket.isLoading}
+              />
+            </Card>
+          </div>
+
+          {/* Model usage */}
+          <Card className="mt-6 bg-viberoi-card border-white/5 p-0 overflow-hidden">
+            <div className="px-6 pt-4 pb-2">
+              <Text className="text-viberoi-sub uppercase tracking-wider text-xs">
+                Model usage
+              </Text>
+            </div>
+            <ModelTable
+              data={byModel.data?.items ?? []}
+              isLoading={byModel.isLoading}
+            />
+          </Card>
+
           {canSeeTeam && (
             <Card className="mt-6 bg-viberoi-card border-white/5 p-0 overflow-hidden">
               <div className="px-6 pt-4 pb-3 flex items-center justify-between">
@@ -242,6 +313,9 @@ function TopDevelopersTable({
     sessions: number;
     tokens: number;
     cost_usd: string;
+    lines_added: number;
+    lines_deleted: number;
+    commit_count: number;
   }>;
   isLoading: boolean;
 }) {
@@ -267,6 +341,8 @@ function TopDevelopersTable({
           <th className="px-6 py-3 font-normal text-right">Sessions</th>
           <th className="px-6 py-3 font-normal text-right">Tokens</th>
           <th className="px-6 py-3 font-normal text-right">Cost</th>
+          <th className="px-6 py-3 font-normal text-right">LOC</th>
+          <th className="px-6 py-3 font-normal text-right">Commits</th>
         </tr>
       </thead>
       <tbody>
@@ -284,6 +360,147 @@ function TopDevelopersTable({
             </td>
             <td className="px-6 py-3 text-right font-mono">
               ${parseFloat(d.cost_usd).toFixed(2)}
+            </td>
+            <td className="px-6 py-3 text-right font-mono text-xs">
+              <span className="text-emerald-400">+{d.lines_added}</span>{" "}
+              <span className="text-red-400">-{d.lines_deleted}</span>
+            </td>
+            <td className="px-6 py-3 text-right font-mono">{d.commit_count}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function DonutChartCard({
+  data,
+  isLoading,
+  emptyHint,
+  valueLabel,
+}: {
+  data: Array<{ name: string; value: number }>;
+  isLoading: boolean;
+  emptyHint: string;
+  valueLabel?: string;
+}) {
+  if (isLoading) {
+    return <Text className="text-viberoi-sub py-12 text-center">Loading…</Text>;
+  }
+  if (data.length === 0) {
+    return (
+      <Text className="text-viberoi-sub py-12 text-center text-xs">
+        {emptyHint}
+      </Text>
+    );
+  }
+  return (
+    <DonutChart
+      data={data}
+      category="value"
+      index="name"
+      colors={["emerald", "blue", "violet", "amber", "rose"]}
+      valueFormatter={(n: number) =>
+        valueLabel ? `${n.toLocaleString()} ${valueLabel}` : `$${n.toFixed(2)}`
+      }
+      className="h-44"
+    />
+  );
+}
+
+function PerTicketTable({
+  data,
+  isLoading,
+}: {
+  data: Array<{ ticket_external_id: string; sessions: number; cost_usd: string }>;
+  isLoading: boolean;
+}) {
+  const nav = useNavigate();
+  if (isLoading) {
+    return <Text className="text-viberoi-sub py-8 text-center">Loading…</Text>;
+  }
+  if (data.length === 0) {
+    return (
+      <Text className="text-viberoi-sub py-8 text-center text-xs">
+        No tickets attributed yet
+      </Text>
+    );
+  }
+  return (
+    <table className="w-full text-sm">
+      <tbody>
+        {data.map((t) => (
+          <tr
+            key={t.ticket_external_id}
+            className="border-b border-white/5 hover:bg-white/5 cursor-pointer"
+            onClick={() => nav(`/sessions?ticket=${t.ticket_external_id}`)}
+          >
+            <td className="px-4 py-2 font-mono text-xs">
+              {t.ticket_external_id}
+            </td>
+            <td className="px-4 py-2 text-right text-xs text-viberoi-sub">
+              {t.sessions}s
+            </td>
+            <td className="px-4 py-2 text-right font-mono">
+              ${parseFloat(t.cost_usd).toFixed(2)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ModelTable({
+  data,
+  isLoading,
+}: {
+  data: Array<{
+    model: string;
+    sessions: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: string;
+  }>;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return <Text className="text-viberoi-sub py-8 text-center">Loading…</Text>;
+  }
+  if (data.length === 0) {
+    return (
+      <Text className="text-viberoi-sub py-8 text-center text-xs">
+        No model data yet
+      </Text>
+    );
+  }
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-left text-xs uppercase tracking-wider text-viberoi-sub border-b border-white/5">
+          <th className="px-6 py-3 font-normal">Model</th>
+          <th className="px-6 py-3 font-normal text-right">Sessions</th>
+          <th className="px-6 py-3 font-normal text-right">Input tokens</th>
+          <th className="px-6 py-3 font-normal text-right">Output tokens</th>
+          <th className="px-6 py-3 font-normal text-right">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((m) => (
+          <tr
+            key={m.model}
+            className="border-b border-white/5 hover:bg-white/5"
+          >
+            <td className="px-6 py-3 font-mono text-xs">{m.model}</td>
+            <td className="px-6 py-3 text-right font-mono">{m.sessions}</td>
+            <td className="px-6 py-3 text-right font-mono">
+              {m.input_tokens.toLocaleString()}
+            </td>
+            <td className="px-6 py-3 text-right font-mono">
+              {m.output_tokens.toLocaleString()}
+            </td>
+            <td className="px-6 py-3 text-right font-mono">
+              ${parseFloat(m.cost_usd).toFixed(2)}
             </td>
           </tr>
         ))}
