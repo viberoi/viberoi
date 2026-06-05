@@ -122,7 +122,9 @@ module "rds" {
   instance_class        = "db.t4g.micro"
   multi_az              = false
   backup_retention_days = 1
-  deletion_protection   = true
+  # NOTE: deletion_protection toggled off so we can destroy paid resources
+  # during build phases. Flip back to true before promoting to staging/prod.
+  deletion_protection = false
   tags                  = local.common_tags
 }
 
