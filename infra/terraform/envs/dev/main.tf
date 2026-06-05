@@ -117,9 +117,11 @@ module "rds" {
   master_password    = module.secrets.rds_master_password
 
   # Dev defaults - match module defaults explicitly so changes here are visible.
+  # backup_retention=1 to stay inside the AWS free tier (account limit;
+  # bumps to 7+ break with FreeTierRestrictionError until the plan upgrades).
   instance_class        = "db.t4g.micro"
   multi_az              = false
-  backup_retention_days = 7
+  backup_retention_days = 1
   deletion_protection   = true
   tags                  = local.common_tags
 }

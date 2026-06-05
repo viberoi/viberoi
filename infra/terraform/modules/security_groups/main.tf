@@ -151,10 +151,12 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_lambda" {
   referenced_security_group_id = aws_security_group.lambda.id
 }
 
-# Egress none - DB doesn't initiate outbound.
+# Egress none - DB does not initiate outbound.
+# AWS rule descriptions allow only [a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*] -
+# apostrophes are rejected.
 resource "aws_vpc_security_group_egress_rule" "rds_none" {
   security_group_id = aws_security_group.rds.id
-  description       = "No egress - DB doesn't initiate connections."
+  description       = "No egress (DB does not initiate connections)."
   ip_protocol       = "-1"
   cidr_ipv4         = "127.0.0.1/32"
 }

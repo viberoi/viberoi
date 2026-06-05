@@ -60,7 +60,7 @@ resource "aws_elasticache_replication_group" "this" {
 
   snapshot_retention_limit = 1
   snapshot_window          = "06:30-07:00"
-  maintenance_window       = "sun:07:30-sun:08:00"
+  maintenance_window       = "sun:07:30-sun:08:30" # AWS requires 60+ min
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-redis" })
 }
