@@ -51,6 +51,27 @@ resource "aws_kms_key" "this" {
           }
           Action   = "kms:*"
           Resource = "*"
+        },
+        # S3 needs to encrypt notification messages with this CMK
+        # when delivering bucket events to a KMS-encrypted SQS queue.
+        # Without this, PutBucketNotificationConfiguration fails:
+        # "Unable to validate the following destination configurations".
+        {
+          Sid    = "AllowS3ServiceForBucketNotifications"
+          Effect = "Allow"
+          Principal = {
+            Service = "s3.amazonaws.com"
+          }
+          Action = [
+            "kms:GenerateDataKey",
+            "kms:Decrypt",
+          ]
+          Resource = "*"
+          Condition = {
+            StringEquals = {
+              "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            }
+          }
         }
       ],
       length(var.additional_iam_arns) > 0 ? [

@@ -59,7 +59,7 @@ resource "aws_elasticache_replication_group" "this" {
   kms_key_id                 = var.kms_key_arn
 
   snapshot_retention_limit = 1
-  snapshot_window          = "06:30-07:00"
+  snapshot_window          = "05:00-06:00"        # AWS requires 60+ min
   maintenance_window       = "sun:07:30-sun:08:30" # AWS requires 60+ min
 
   tags = merge(local.common_tags, { Name = "${local.prefix}-redis" })
