@@ -170,15 +170,9 @@ aws s3 sync dist/ s3://$bucket/ --delete
 aws cloudfront create-invalidation --distribution-id $dist --paths "/*"
 ```
 
-Also update Cognito callback URLs (currently localhost-only):
-
-```powershell
-# Edit infra/terraform/envs/dev/main.tf line ~152:
-#   callback_urls = ["https://app.viberoi.io/auth/callback", ...]
-#   logout_urls   = ["https://app.viberoi.io/", ...]
-# Then:
-terraform apply
-```
+Cognito callback URLs auto-include `app.${var.domain}/auth/callback` when
+`var.domain` is set, so the Phase 1 + Phase 5 applies already configured
+both localhost and the deployed URL on the same pool. No extra step.
 
 ## Phase 7 — smoke test (~10 min)
 

@@ -147,15 +147,23 @@ module "cognito" {
   project = var.project
   env     = var.env
 
-  # Dev: localhost callbacks. 6E adds the real domain.
-  callback_urls = [
-    "http://localhost:5173/auth/callback",
-    "http://127.0.0.1:5173/auth/callback",
-  ]
-  logout_urls = [
-    "http://localhost:5173/",
-    "http://127.0.0.1:5173/",
-  ]
+  # Local-dev callbacks always live here. The deployed-app callback gets
+  # appended when `var.domain` is set — Cognito accepts multiple, so
+  # both local and prod work from the same pool with one apply.
+  callback_urls = concat(
+    [
+      "http://localhost:5173/auth/callback",
+      "http://127.0.0.1:5173/auth/callback",
+    ],
+    var.domain != "" ? ["https://app.${var.domain}/auth/callback"] : [],
+  )
+  logout_urls = concat(
+    [
+      "http://localhost:5173/",
+      "http://127.0.0.1:5173/",
+    ],
+    var.domain != "" ? ["https://app.${var.domain}/"] : [],
+  )
 
   # Federated IdPs — empty defaults → no IdPs created. Set
   # TF_VAR_google_client_id etc to enable.
