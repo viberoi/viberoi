@@ -14,7 +14,7 @@ from viberoi_shared.s3 import get_raw_session
 from viberoi_shared.sessions import upsert
 from viberoi_shared.types import Session
 
-from worker.app.attribution import attribute
+from worker.app.attribution import attribute, enrich_with_db_signals
 from worker.schema.events import S3EventRecord
 
 logger = get_logger(__name__)
@@ -44,6 +44,9 @@ async def process_s3_event(record: S3EventRecord) -> None:
     developer_uuid = UUID(session.developer_id)
 
     # Worker is the source of truth for attribution; agent's value is advisory.
+    # Signal 1 (branch) is session-only; Signals 2 + 5 run inside the
+    # org-scoped DB block below so they can read ticket.pr_file_paths
+    # + ticket.title (populated by the GitHub webhook handler).
     session = session.model_copy(update={"attribution": attribute(session)})
 
     # Same for cost — agent sends 0 by design; reconcile here against the
@@ -66,6 +69,13 @@ async def process_s3_event(record: S3EventRecord) -> None:
     )
 
     async with org_scoped_session(org_uuid) as db:
+        # Enrich Signal 1 with Signals 2 + 5 if the ticket row already
+        # exists (webhook ran first). Otherwise Signal 1 stands alone;
+        # the every-5-min backfill cron re-attributes once the PR
+        # webhook arrives.
+        enriched = await enrich_with_db_signals(session.attribution, session, db)
+        session = session.model_copy(update={"attribution": enriched})
+
         row_id = await upsert(
             db, session, developer_uuid=developer_uuid, org_uuid=org_uuid
         )

@@ -137,3 +137,118 @@ def test_attribute_epic_and_sprint_stubbed_for_now() -> None:
     result = attribute(session)
     assert result.epic_id is None
     assert result.sprint_id is None
+
+
+# ── Signals 2 + 5 (DB enrichment) ─────────────────────────────────────────
+
+
+from unittest.mock import AsyncMock, MagicMock
+
+from worker.app.attribution import (
+    SIGNAL_FILE_OVERLAP_WEIGHT,
+    SIGNAL_EXPLICIT_MENTION_WEIGHT,
+    enrich_with_db_signals,
+)
+
+
+def _session_with(branch: str, files_touched: list[str]) -> Session:
+    s = _session_with_branch(branch)
+    return s.model_copy(
+        update={
+            "activity": s.activity.model_copy(
+                update={
+                    "files_touched": files_touched,
+                    "files_touched_count": len(files_touched),
+                }
+            )
+        }
+    )
+
+
+def _mock_db_returning(row: tuple | None) -> AsyncMock:
+    """Returns a stub AsyncSession whose `execute().first()` yields `row`."""
+    db = MagicMock()
+    result = MagicMock()
+    result.first.return_value = row
+    db.execute = AsyncMock(return_value=result)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_enrich_no_op_when_no_ticket_id() -> None:
+    s = _session_with_branch("main")
+    attr = attribute(s)
+    db = _mock_db_returning(None)
+    result = await enrich_with_db_signals(attr, s, db)
+    assert result.confidence == 0.0
+    assert result.signals == []
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_enrich_no_op_when_ticket_not_in_db() -> None:
+    s = _session_with("feature/JIRA-142", ["src/a.py"])
+    attr = attribute(s)
+    db = _mock_db_returning(None)
+    result = await enrich_with_db_signals(attr, s, db)
+    # Only Signal 1 weight remains.
+    assert result.confidence == pytest.approx(SIGNAL_BRANCH_WEIGHT)
+    assert result.signals == ["branch_match"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_signal_2_file_overlap_fires() -> None:
+    s = _session_with("feature/JIRA-142", ["src/auth.py", "tests/test_x.py"])
+    attr = attribute(s)
+    db = _mock_db_returning(("[no mention]", ["src/auth.py", "src/other.py"]))
+    result = await enrich_with_db_signals(attr, s, db)
+    assert "file_overlap" in result.signals
+    assert "explicit_mention" not in result.signals
+    assert result.confidence == pytest.approx(
+        SIGNAL_BRANCH_WEIGHT + SIGNAL_FILE_OVERLAP_WEIGHT
+    )
+
+
+@pytest.mark.asyncio
+async def test_enrich_signal_5_explicit_mention_fires() -> None:
+    s = _session_with("feature/JIRA-142", ["src/foo.py"])
+    attr = attribute(s)
+    db = _mock_db_returning(("JIRA-142: implement payment", []))
+    result = await enrich_with_db_signals(attr, s, db)
+    assert "explicit_mention" in result.signals
+    assert "file_overlap" not in result.signals
+    assert result.confidence == pytest.approx(
+        SIGNAL_BRANCH_WEIGHT + SIGNAL_EXPLICIT_MENTION_WEIGHT
+    )
+
+
+@pytest.mark.asyncio
+async def test_enrich_both_signals_stack() -> None:
+    s = _session_with("feature/JIRA-142", ["src/auth.py"])
+    attr = attribute(s)
+    db = _mock_db_returning(("JIRA-142: auth refactor", ["src/auth.py"]))
+    result = await enrich_with_db_signals(attr, s, db)
+    assert "file_overlap" in result.signals
+    assert "explicit_mention" in result.signals
+    expected = (
+        SIGNAL_BRANCH_WEIGHT
+        + SIGNAL_FILE_OVERLAP_WEIGHT
+        + SIGNAL_EXPLICIT_MENTION_WEIGHT
+    )
+    assert result.confidence == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_enrich_does_not_demote_confidence() -> None:
+    """Hand-craft a synthetic high-confidence Attribution and ensure
+    enrichment never lowers it (defense against future weight changes)."""
+    s = _session_with("feature/JIRA-142", ["src/foo.py"])
+    attr = Attribution(
+        ticket_id="JIRA-142",
+        confidence=0.9,
+        signals=["branch_match"],
+        method=AttributionMethod.BRANCH_PARSE,
+    )
+    db = _mock_db_returning(("[no mention]", []))  # no signals fire
+    result = await enrich_with_db_signals(attr, s, db)
+    assert result.confidence == pytest.approx(0.9)
