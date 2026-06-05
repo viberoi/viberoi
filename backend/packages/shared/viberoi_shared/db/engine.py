@@ -64,7 +64,14 @@ def get_admin_engine() -> AsyncEngine:
     global _admin_engine
     if _admin_engine is None:
         s = get_settings()
-        async_admin_url = s.database_admin_url.replace("+psycopg", "+asyncpg")
+        # psycopg uses `?sslmode=...`; asyncpg uses `?ssl=...`. Swap the
+        # driver AND the param name so RDS connections work both ways.
+        async_admin_url = (
+            s.database_admin_url
+            .replace("+psycopg", "+asyncpg")
+            .replace("?sslmode=", "?ssl=")
+            .replace("&sslmode=", "&ssl=")
+        )
         _admin_engine = create_async_engine(
             async_admin_url,
             pool_size=2,

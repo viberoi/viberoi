@@ -58,6 +58,15 @@ class SharedSettings(BaseSettings):
     database_max_overflow: int = 10
     database_pool_timeout_s: int = 30
 
+    # Optional: assemble database URLs from individual parts when the
+    # full URL isn't pre-built. Used by the deployed env where only the
+    # RDS host + master password are known up front. If
+    # `rds_master_password` is set AND database_url is still the default,
+    # the URLs are rebuilt in the model_post_init hook below.
+    database_host: str | None = None
+    database_user: str = "postgres"
+    rds_master_password: str | None = None
+
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
@@ -82,6 +91,25 @@ class SharedSettings(BaseSettings):
 
     # Tracing
     otel_endpoint: str | None = None
+
+    def model_post_init(self, __context: object) -> None:
+        # Assemble DB URLs from RDS parts when running in a deployed
+        # env that only knows the host + master password (e.g. ECS task
+        # with VIBEROI_RDS_MASTER_PASSWORD secret + VIBEROI_DATABASE_HOST
+        # env var). Keeps the localhost defaults intact for `uv run`
+        # dev where nothing extra is set.
+        if self.rds_master_password and self.database_host:
+            from urllib.parse import quote_plus
+
+            pw = quote_plus(self.rds_master_password)
+            host = self.database_host
+            user = self.database_user
+            self.database_url = (
+                f"postgresql+asyncpg://{user}:{pw}@{host}:5432/viberoi?ssl=require"
+            )
+            self.database_admin_url = (
+                f"postgresql+psycopg://{user}:{pw}@{host}:5432/viberoi?sslmode=require"
+            )
 
 
 @lru_cache(maxsize=1)

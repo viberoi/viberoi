@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # Launch uvicorn + the SQS backfill consumer side-by-side.
 #
 # Both processes must run inside the same container for V1 (single ECS

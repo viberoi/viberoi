@@ -35,6 +35,12 @@ variable "certificate_arn" {
   default     = null
 }
 
+variable "alb_dns_name" {
+  type        = string
+  description = "ALB DNS name to route /api/* to. Empty disables the API origin behavior."
+  default     = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

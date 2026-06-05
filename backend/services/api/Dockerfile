@@ -25,6 +25,9 @@ RUN uv sync --frozen --no-install-workspace --package viberoi-api
 
 COPY backend/packages/shared/ backend/packages/shared/
 COPY backend/services/api/ backend/services/api/
+# Bake migrations into the API image so a one-off Fargate task can run
+# alembic from inside the VPC (RDS isn't publicly accessible).
+COPY backend/migrations/ backend/migrations/
 
 RUN uv sync --frozen --package viberoi-api
 

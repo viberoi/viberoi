@@ -276,6 +276,10 @@ locals {
     VIBEROI_COGNITO_USER_POOL_ID  = module.cognito.user_pool_id
     VIBEROI_COGNITO_REGION        = var.region
     VIBEROI_COGNITO_APP_CLIENT_ID = module.cognito.spa_client_id
+    # DB URL assembled at app startup from RDS host + master password
+    # secret. See viberoi_shared.config.settings.model_post_init.
+    VIBEROI_DATABASE_HOST = element(split(":", module.rds.endpoint), 0)
+    VIBEROI_DATABASE_USER = "postgres"
   }
 
   # Secret refs every service needs - name → Secrets Manager ARN.
@@ -671,6 +675,9 @@ module "cloudfront" {
   frontend_bucket_id                   = module.s3.frontend_bucket_id
   frontend_bucket_regional_domain_name = module.s3.frontend_bucket_regional_domain_name
   frontend_bucket_arn                  = module.s3.frontend_bucket_arn
+
+  # Same-origin routing: /api/* hits the ALB, everything else hits S3.
+  alb_dns_name = var.domain != "" ? module.alb[0].alb_dns_name : ""
 
   aliases         = var.enable_cloudfront_custom_domain && var.domain != "" ? ["app.${var.domain}"] : []
   certificate_arn = var.enable_cloudfront_custom_domain && var.domain != "" ? module.acm[0].certificate_arn : null
