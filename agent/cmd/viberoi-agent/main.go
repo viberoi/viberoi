@@ -26,7 +26,7 @@ import (
 const usage = `viberoi-agent — captures AI coding-tool session metadata.
 
 USAGE:
-  viberoi-agent register --org-id <uuid> --developer-id <uuid> --token <token> --url <https-url> [--claude-code-path <dir>] [--claude-code-agent-mode-path <dir>] [--cursor-db-path <file>] [--poll-seconds <n>]
+  viberoi-agent register --org-id <uuid> --developer-id <uuid> --token <token> --url <https-url> [--claude-code-path <dir>] [--claude-code-agent-mode-path <dir>] [--cursor-db-path <file>] [--copilot-path <dir>] [--poll-seconds <n>]
   viberoi-agent push
   viberoi-agent run
   viberoi-agent version
@@ -76,6 +76,7 @@ func runRegister(args []string) {
 	claudePath := fs.String("claude-code-path", "", "Claude Code local-cli-sessions root")
 	agentModePath := fs.String("claude-code-agent-mode-path", "", "Claude Code local-agent-mode-sessions root (optional)")
 	cursorDBPath := fs.String("cursor-db-path", "", "Cursor state.vscdb path (optional)")
+	copilotPath := fs.String("copilot-path", "", "VS Code workspaceStorage root (optional)")
 	pollSeconds := fs.Int("poll-seconds", 300, "poll interval in seconds")
 	_ = fs.Parse(args)
 
@@ -92,6 +93,7 @@ func runRegister(args []string) {
 		ClaudeCodePath:          *claudePath,
 		ClaudeCodeAgentModePath: *agentModePath,
 		CursorDBPath:            *cursorDBPath,
+		CopilotPath:             *copilotPath,
 	}
 	if err := c.Validate(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

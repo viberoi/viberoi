@@ -34,6 +34,9 @@ type Config struct {
 	// Path to the Cursor SQLite file
 	// (`%APPDATA%\Cursor\User\globalStorage\state.vscdb`). Empty = skip Cursor.
 	CursorDBPath string `yaml:"cursor_db_path,omitempty"`
+	// Root containing VS Code's per-workspace chat sessions
+	// (`%APPDATA%\Code\User\workspaceStorage`). Empty = skip Copilot.
+	CopilotPath string `yaml:"copilot_path,omitempty"`
 }
 
 // Validate returns an error if any required field is missing.

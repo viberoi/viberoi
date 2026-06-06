@@ -24,6 +24,7 @@ import (
 	"github.com/viberoi/viberoi/agent/pkg/schema"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode"
 	"github.com/viberoi/viberoi/agent/pkg/sources/claudecode_agentmode"
+	"github.com/viberoi/viberoi/agent/pkg/sources/copilot"
 	"github.com/viberoi/viberoi/agent/pkg/sources/cursor"
 	"github.com/viberoi/viberoi/agent/pkg/state"
 )
@@ -159,6 +160,35 @@ func (r *Runner) Run(ctx context.Context) (Result, error) {
 		}
 	}
 
+	// VS Code Copilot — N chat-session JSON files under workspaceStorage.
+	// Sessions whose id is prefixed `claude-code:/` are Claude Code chats
+	// surfaced through Copilot's UI shell and are deduped here per Master
+	// spec § 460.
+	if r.Cfg.CopilotPath != "" {
+		copilotFiles, err := copilot.Discover(r.Cfg.CopilotPath)
+		if err != nil {
+			r.Logger("copilot_discover_failed", "error_type", typeName(err))
+		} else {
+			for _, path := range copilotFiles {
+				if ctx.Err() != nil {
+					return res, ctx.Err()
+				}
+				session, err := r.buildCopilotSession(ctx, path)
+				if err != nil {
+					r.Logger("copilot_build_failed", "path", path, "error_type", typeName(err))
+					continue
+				}
+				if session == nil {
+					continue // empty session / dedup against Claude Code
+				}
+				res.Discovered++
+				if err := r.pushIfNewCopilot(ctx, session, &res); err != nil {
+					return res, err
+				}
+			}
+		}
+	}
+
 	return res, nil
 }
 
@@ -177,6 +207,13 @@ func (r *Runner) pushIfNewCursor(
 	ctx context.Context, session *schema.Session, res *Result,
 ) error {
 	return r.pushIfNewForTool(ctx, session, schema.ToolCursor, res)
+}
+
+// pushIfNewCopilot — Copilot chat sessions are keyed per-tool too.
+func (r *Runner) pushIfNewCopilot(
+	ctx context.Context, session *schema.Session, res *Result,
+) error {
+	return r.pushIfNewForTool(ctx, session, schema.ToolCopilot, res)
 }
 
 func (r *Runner) pushIfNewForTool(
@@ -314,6 +351,56 @@ func (r *Runner) buildCursorSession(ctx context.Context, cs *cursor.CursorSessio
 	// Cursor's refunded flag travels on the Quality block. The Worker
 	// treats refunded sessions specially in cost rollups.
 	s.Quality.IsRefunded = cs.IsRefunded
+	return s, nil
+}
+
+// buildCopilotSession parses one chatSessions JSON and assembles a
+// Session envelope. Tokens are 0 — Copilot keeps them server-side; the
+// backend reconciler will fill in via GitHub copilot metrics. Mode
+// derives from the Copilot agent id (editsAgent → agent, default → chat).
+//
+// Returns (nil, nil) for empty files (zero requests) and Claude Code
+// proxy sessions surfaced through Copilot's UI shell (deduped per
+// Master spec § 460).
+func (r *Runner) buildCopilotSession(ctx context.Context, jsonlPath string) (*schema.Session, error) {
+	parsed, err := copilot.ReadFile(jsonlPath)
+	if err != nil {
+		return nil, err
+	}
+	if parsed == nil {
+		return nil, nil
+	}
+	if parsed.IsClaudeProxy() {
+		return nil, nil
+	}
+
+	mode := schema.ModeChat
+	if strings.Contains(parsed.AgentID, "edit") {
+		mode = schema.ModeAgent
+	}
+
+	s := r.assembleSession(ctx, sessionInputs{
+		SessionID:    parsed.SessionID,
+		Surface:      schema.SurfaceVSCodeExtension,
+		Model:        parsed.Model,
+		StartedAt:    parsed.CreatedAt,
+		EndedAt:      parsed.UpdatedAt,
+		Input:        0, // server-side reconciliation; agent emits 0
+		Output:       0,
+		TurnCount:    parsed.TurnCount,
+		Mode:         mode,
+		IsAgentic:    strings.Contains(parsed.AgentID, "edit"),
+		FilesTouched: parsed.FilePaths,
+		DataSources: []string{
+			schema.SourceLocalJSONL,
+			schema.SourceGitDiff,
+		},
+	})
+	s.Tool.Name = schema.ToolCopilot
+	// Copilot is subscription-priced; never API-keyed locally. Worker
+	// reconciles to a per-seat amortization or to the metrics API once
+	// configured.
+	s.Tokens.IsEstimated = true
 	return s, nil
 }
 
