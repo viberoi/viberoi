@@ -4,6 +4,7 @@ import { Shell } from "./components/Shell";
 import { useAuth } from "./auth/AuthContext";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
+import { MyActivity } from "./pages/MyActivity";
 import { Sessions } from "./pages/Sessions";
 import { SessionDetail } from "./pages/SessionDetail";
 import { Sprints } from "./pages/Sprints";
@@ -22,6 +23,26 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  // Developers see only /my-activity. OrgAdmin + TeamLead get the org-wide
+  // dashboard too. Master spec § privacy: developers must not see org data.
+  if (user?.role === "Developer") {
+    return <Navigate to="/my-activity" replace />;
+  }
+  return <>{children}</>;
+}
+
+function LandingRedirect() {
+  const { user } = useAuth();
+  return (
+    <Navigate
+      to={user?.role === "Developer" ? "/my-activity" : "/dashboard"}
+      replace
+    />
+  );
+}
+
 export function App() {
   return (
     <Routes>
@@ -34,8 +55,16 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/" element={<LandingRedirect />} />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAdmin>
+              <Dashboard />
+            </RequireAdmin>
+          }
+        />
+        <Route path="/my-activity" element={<MyActivity />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/sessions/:id" element={<SessionDetail />} />
         <Route path="/sprints" element={<Sprints />} />

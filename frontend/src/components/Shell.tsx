@@ -5,20 +5,36 @@ import {
   LogOut,
   Settings as SettingsIcon,
   Target,
+  User as UserIcon,
   Zap,
 } from "lucide-react";
 
 import { useAuth } from "../auth/AuthContext";
 
-const navItems = [
+const myActivityItem = {
+  to: "/my-activity",
+  label: "My activity",
+  Icon: UserIcon,
+};
+const orgWideItems = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/sessions", label: "Sessions", Icon: ListTree },
   { to: "/sprints", label: "Sprints", Icon: Target },
-  { to: "/settings", label: "Settings", Icon: SettingsIcon },
 ];
+const settingsItem = {
+  to: "/settings",
+  label: "Settings",
+  Icon: SettingsIcon,
+};
 
 export function Shell() {
   const { user, logout } = useAuth();
+  // Developers see only "My activity" + Settings. OrgAdmin + TeamLead see
+  // everything (their own page first, then org-wide).
+  const canSeeOrg = user?.role === "OrgAdmin" || user?.role === "TeamLead";
+  const navItems = canSeeOrg
+    ? [myActivityItem, ...orgWideItems, settingsItem]
+    : [myActivityItem, settingsItem];
   return (
     <div className="min-h-screen flex">
       <aside className="w-56 border-r border-white/5 bg-viberoi-card p-4 flex flex-col gap-1">

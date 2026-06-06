@@ -249,6 +249,17 @@ export const api = {
       `/kpis/per-ticket?window_days=${windowDays}&limit=${limit}`,
     ),
 
+  // ── /me/* — caller's personal data only ──────────────────────────────────
+  mySessions: (cursor?: string, limit = 50) => {
+    const q = new URLSearchParams();
+    if (cursor) q.set("cursor", cursor);
+    q.set("limit", String(limit));
+    return request<SessionListResponse>(`/me/sessions?${q.toString()}`);
+  },
+
+  mySummary: (windowDays = 30) =>
+    request<MeSummary>(`/me/summary?window_days=${windowDays}`),
+
   listSessions: (cursor?: string, limit = 50) => {
     const q = new URLSearchParams();
     if (cursor) q.set("cursor", cursor);
@@ -404,4 +415,24 @@ export interface TicketRollup {
 export interface PerTicketResponse {
   window_days: number;
   items: TicketRollup[];
+}
+
+export interface MeSummary {
+  window_days: number;
+  sessions: number;
+  tokens: number;
+  cost_usd: string;
+  lines_added: number;
+  lines_deleted: number;
+  commit_count: number;
+  avg_session_duration_seconds: number | null;
+  last_session_at: string | null;
+  tool_mix: Array<{ tool_name: string; sessions: number; cost_usd: string }>;
+  model_mix: Array<{ model: string; sessions: number; cost_usd: string }>;
+  mode_mix: Array<{ mode: string; sessions: number }>;
+  top_tickets: Array<{
+    ticket_external_id: string;
+    sessions: number;
+    cost_usd: string;
+  }>;
 }

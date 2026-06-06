@@ -10,6 +10,7 @@ from api.routes import (
     health,
     invitations,
     kpis,
+    me,
     notification_channels,
     sessions,
     sprints,
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(
         invitations.router, prefix="/invitations", tags=["invitations"]
     )
+    app.include_router(me.router, prefix="/me", tags=["me"])
     return app
 
 
